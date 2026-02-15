@@ -1,0 +1,69 @@
+{
+  "appId": "com.craftos.server-manager",
+  "productName": "CraftOS Server Manager",
+  "copyright": "Copyright © 2024 CraftOS",
+  "directories": {
+    "buildResources": "assets",
+    "output": "release"
+  },
+  "files": [
+    "electron/**/*",
+    "!electron/node_modules",
+    "assets/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "backend/dist",
+      "to": "backend/dist",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "frontend/dist",
+      "to": "backend/dist/public",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "backend/node_modules",
+      "to": "backend/node_modules",
+      "filter": ["**/*"]
+    }
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "assets/icon.ico",
+    "artifactName": "CraftOS-Setup-${version}.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false,
+    "installerIcon": "assets/icon.ico",
+    "uninstallerIcon": "assets/icon.ico",
+    "installerHeaderIcon": "assets/icon.ico",
+    "shortcutName": "CraftOS Server Manager"
+  },
+  "mac": {
+    "target": ["dmg"],
+    "icon": "assets/icon.icns",
+    "category": "public.app-category.utilities",
+    "artifactName": "CraftOS-${version}.${ext}"
+  },
+  "linux": {
+    "target": ["AppImage", "deb"],
+    "icon": "assets/icon.png",
+    "category": "Utility",
+    "artifactName": "CraftOS-${version}.${ext}"
+  },
+  "publish": {
+    "provider": "github",
+    "owner": "YOUR_GITHUB_USERNAME",
+    "repo": "craftos-server-manager",
+    "releaseType": "release"
+  }
+}

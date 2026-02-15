@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  craftos:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: craftos-server-manager
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - craftos-data:/app/data
+      - craftos-servers:/app/servers
+      - craftos-backups:/app/backups
+      - craftos-logs:/app/logs
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET:-change-this-to-a-random-string}
+      - DATA_DIR=/app/data
+      - SERVERS_DIR=/app/servers
+      - BACKUPS_DIR=/app/backups
+      - LOGS_DIR=/app/logs
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  craftos-data:
+  craftos-servers:
+  craftos-backups:
+  craftos-logs:

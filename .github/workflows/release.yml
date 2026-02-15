@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: node20-linux-x64
+            artifact: craftos-linux-x64
+            extension: ''
+          - os: windows-latest
+            target: node20-win-x64
+            artifact: craftos-win-x64
+            extension: '.exe'
+          - os: macos-latest
+            target: node20-macos-x64
+            artifact: craftos-macos-x64
+            extension: ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npx tsc --project tsconfig.json
+        working-directory: backend
+
+      - name: Build frontend
+        run: npx vite build
+        working-directory: frontend
+
+      - name: Package with pkg
+        run: |
+          npx pkg backend/dist/index.js \
+            --target ${{ matrix.target }} \
+            --output release/CraftOS${{ matrix.extension }} \
+            --compress GZip
+
+      - name: Prepare release archive
+        shell: bash
+        run: |
+          mkdir -p release-package
+          cp release/CraftOS${{ matrix.extension }} release-package/
+          cp -r frontend/dist release-package/public
+          cp .env.example release-package/
+          cp README.md release-package/
+
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cd release-package && 7z a -tzip ../${{ matrix.artifact }}.zip . && cd ..
+          else
+            tar -czf ${{ matrix.artifact }}.tar.gz -C release-package .
+          fi
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ${{ matrix.artifact }}.*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,231 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-dark-700;
+  }
+
+  body {
+    @apply bg-dark-950 text-dark-100;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  /* ─── Light Theme Overrides ──────────────────────────────── */
+  [data-theme="light"] body {
+    background-color: #f1f5f9;
+    color: #1e293b;
+  }
+
+  [data-theme="light"] * {
+    border-color: #e2e8f0;
+  }
+
+  /* Light mode cards, backgrounds, inputs */
+  [data-theme="light"] .bg-dark-950 { background-color: #f1f5f9; }
+  [data-theme="light"] .bg-dark-900 { background-color: #ffffff; }
+  [data-theme="light"] .bg-dark-900\/50 { background-color: rgba(255,255,255,0.5); }
+  [data-theme="light"] .bg-dark-800 { background-color: #f8fafc; }
+  [data-theme="light"] .bg-dark-800\/30 { background-color: rgba(248,250,252,0.3); }
+  [data-theme="light"] .bg-dark-700 { background-color: #e2e8f0; }
+
+  /* Light mode text */
+  [data-theme="light"] .text-dark-50 { color: #0f172a; }
+  [data-theme="light"] .text-dark-100 { color: #1e293b; }
+  [data-theme="light"] .text-dark-200 { color: #334155; }
+  [data-theme="light"] .text-dark-300 { color: #475569; }
+  [data-theme="light"] .text-dark-400 { color: #64748b; }
+  [data-theme="light"] .text-dark-500 { color: #94a3b8; }
+  [data-theme="light"] .text-dark-600 { color: #cbd5e1; }
+  [data-theme="light"] .text-dark-700 { color: #e2e8f0; }
+
+  /* Light mode borders */
+  [data-theme="light"] .border-dark-600 { border-color: #cbd5e1; }
+  [data-theme="light"] .border-dark-700 { border-color: #e2e8f0; }
+  [data-theme="light"] .border-dark-800 { border-color: #f1f5f9; }
+
+  /* Light mode hover */
+  [data-theme="light"] .hover\:bg-dark-800:hover { background-color: #f1f5f9; }
+  [data-theme="light"] .hover\:bg-dark-700:hover { background-color: #e2e8f0; }
+  [data-theme="light"] .hover\:text-dark-200:hover { color: #334155; }
+  [data-theme="light"] .hover\:text-dark-100:hover { color: #1e293b; }
+  [data-theme="light"] .hover\:bg-dark-900\/50:hover { background-color: rgba(255,255,255,0.5); }
+  [data-theme="light"] .hover\:border-dark-600:hover { border-color: #cbd5e1; }
+
+  /* Light mode scrollbar */
+  [data-theme="light"] ::-webkit-scrollbar-track { background: #f1f5f9; }
+  [data-theme="light"] ::-webkit-scrollbar-thumb { background: #cbd5e1; }
+  [data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+  /* Light mode console */
+  [data-theme="light"] .console-output {
+    background-color: #1e293b;
+    color: #4ade80;
+  }
+
+  /* Light mode focus ring offset */
+  [data-theme="light"] .focus\:ring-offset-dark-950 { --tw-ring-offset-color: #f1f5f9; }
+
+  /* Custom scrollbar (dark mode is default) */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-dark-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-dark-600 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-dark-500;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-dark-900 border border-dark-700 rounded-xl p-6;
+  }
+
+  .card-hover {
+    @apply card hover:border-dark-600 transition-colors duration-200;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
+           text-sm font-medium transition-all duration-200
+           focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-950
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-accent-600 text-white hover:bg-accent-700 focus:ring-accent-500;
+  }
+
+  .btn-secondary {
+    @apply btn bg-dark-800 text-dark-200 hover:bg-dark-700 border border-dark-600
+           focus:ring-dark-500;
+  }
+
+  .btn-danger {
+    @apply btn bg-danger-600 text-white hover:bg-danger-500 focus:ring-danger-500;
+  }
+
+  .btn-success {
+    @apply btn bg-success-600 text-white hover:bg-success-500 focus:ring-success-500;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-dark-300 hover:bg-dark-800 hover:text-dark-100;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-base;
+  }
+
+  .input {
+    @apply block w-full rounded-lg border border-dark-600 bg-dark-800 px-4 py-2.5
+           text-dark-100 placeholder-dark-400
+           focus:border-accent-500 focus:ring-1 focus:ring-accent-500
+           transition-colors duration-200;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-dark-300 mb-1.5;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply badge bg-success-500/20 text-success-400;
+  }
+
+  .badge-danger {
+    @apply badge bg-danger-500/20 text-danger-400;
+  }
+
+  .badge-warning {
+    @apply badge bg-warning-500/20 text-warning-400;
+  }
+
+  .badge-info {
+    @apply badge bg-accent-500/20 text-accent-400;
+  }
+
+  .badge-neutral {
+    @apply badge bg-dark-700 text-dark-300;
+  }
+
+  /* Console styling */
+  .console-output {
+    @apply font-mono text-sm leading-relaxed bg-dark-950 text-green-400
+           rounded-lg overflow-auto;
+  }
+
+  .console-line {
+    @apply px-4 py-0.5 hover:bg-dark-900/50;
+  }
+
+  .console-line-error {
+    @apply console-line text-danger-400;
+  }
+
+  .console-line-warn {
+    @apply console-line text-warning-400;
+  }
+
+  /* ─── Mobile Touch Targets ──────────────────────────────── */
+  @media (pointer: coarse) {
+    .btn-sm {
+      min-height: 44px;
+      min-width: 44px;
+    }
+    .btn {
+      min-height: 44px;
+    }
+  }
+
+  /* ─── Safe Area Padding ─────────────────────────────────── */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* ─── Mobile Card View for Tables ───────────────────────── */
+  @media (max-width: 639px) {
+    .mobile-cards thead {
+      display: none;
+    }
+    .mobile-cards tbody {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      padding: 0.5rem;
+    }
+    .mobile-cards tr {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      padding: 0.75rem;
+      border-radius: 0.75rem;
+      border: 1px solid rgb(var(--color-dark-700, 55 65 81) / 1);
+    }
+    .mobile-cards td {
+      padding: 0 !important;
+    }
+  }
+
+  /* ─── Scrollable Tab Bar Indicators ─────────────────────── */
+  .tabs-scroll {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tabs-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}
