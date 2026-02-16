@@ -39,4 +39,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update:error', (_e, data) => callback(data));
     return () => ipcRenderer.removeListener('update:error', callback);
   },
+
+  // ─── Backend Management ──────────────────────────────
+  getBackendStatus: () => ipcRenderer.invoke('app:getBackendStatus'),
+  restartBackend: () => ipcRenderer.invoke('app:restartBackend'),
 });

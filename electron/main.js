@@ -51,6 +51,24 @@ function setupIPC() {
       autoUpdater.downloadUpdate();
     }
   });
+
+  ipcMain.handle('app:getBackendStatus', () => ({
+    running: !!backendProcess,
+    port: BACKEND_PORT,
+    dataPath: app.getPath('userData'),
+  }));
+
+  ipcMain.handle('app:restartBackend', async () => {
+    log.info('Manual backend restart requested');
+    await stopBackend();
+    isQuitting = false; // Reset quit flag since this is a manual restart
+    try {
+      await startBackend();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
 }
 
 function sendToRenderer(channel, data = {}) {
@@ -230,6 +248,7 @@ function startBackend() {
     });
 
     let resolved = false;
+    let backendErrors = [];
 
     backendProcess.stdout?.on('data', (data) => {
       const output = data.toString();
@@ -241,17 +260,27 @@ function startBackend() {
     });
 
     backendProcess.stderr?.on('data', (data) => {
-      log.error(`[backend] ${data.toString().trim()}`);
+      const errText = data.toString().trim();
+      log.error(`[backend] ${errText}`);
+      backendErrors.push(errText);
     });
 
     backendProcess.on('error', (err) => {
       log.error('Failed to start backend:', err);
-      if (!resolved) { resolved = true; reject(err); }
+      if (!resolved) { resolved = true; reject(new Error(`Backend process error: ${err.message}`)); }
     });
 
     backendProcess.on('exit', (code) => {
       log.info(`Backend exited with code ${code}`);
       backendProcess = null;
+      if (!resolved) {
+        resolved = true;
+        const errorDetail = backendErrors.length > 0
+          ? backendErrors.slice(-5).join('\n')
+          : `Process exited with code ${code}`;
+        reject(new Error(`Backend failed to start:\n${errorDetail}`));
+        return;
+      }
       if (!isQuitting && !backendRestarting && resolved) {
         backendRestarting = true;
         log.info('Restarting backend in 3 seconds...');
@@ -486,12 +515,9 @@ if (!gotTheLock) {
       log.info('Backend started successfully');
     } catch (err) {
       log.error('Failed to start backend:', err);
-      dialog.showErrorBox(
-        'CraftOS Startup Error',
-        `Failed to start the backend server.\n\n${err.message}\n\nThe application will exit.`
-      );
-      app.quit();
-      return;
+      // Don't quit — still show the window so the frontend error screen can be seen
+      // and the user can retry or see what went wrong
+      log.warn('Continuing to show window despite backend failure...');
     }
 
     createWindow();
