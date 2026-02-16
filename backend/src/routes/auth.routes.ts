@@ -130,6 +130,75 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  // ─── Reset admin password (local desktop app recovery) ───
+  // Only works from localhost. Requires knowing the admin username.
+  app.post('/api/auth/reset-admin', async (request, reply) => {
+    // Security: Only allow from localhost (desktop app)
+    const ip = request.ip;
+    const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+    if (!isLocalhost) {
+      return reply.status(403).send({ error: 'Password reset only available from local machine' });
+    }
+
+    const schema = z.object({
+      username: z.string().min(1),
+      newPassword: z.string().min(8),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
+    }
+
+    const { username, newPassword } = parsed.data;
+    const db = getDb();
+
+    const user = (await db.select().from(users).where(eq(users.username, username)))[0];
+    if (!user) {
+      return reply.status(404).send({ error: 'User not found' });
+    }
+
+    if (user.role !== 'admin') {
+      return reply.status(403).send({ error: 'Only admin accounts can be reset this way' });
+    }
+
+    const strength = validatePasswordStrength(newPassword);
+    if (!strength.valid) {
+      return reply.status(400).send({ error: 'Weak password', details: strength.errors });
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    await db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, user.id));
+
+    log.info({ username }, 'Admin password reset via local recovery');
+    return { message: 'Password reset successfully' };
+  });
+
+  // ─── Factory reset (wipe all users, return to setup) ─────
+  // Only works from localhost. Nuclear option for lockouts.
+  app.post('/api/auth/factory-reset', async (request, reply) => {
+    const ip = request.ip;
+    const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+    if (!isLocalhost) {
+      return reply.status(403).send({ error: 'Factory reset only available from local machine' });
+    }
+
+    const schema = z.object({
+      confirm: z.literal('RESET'),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Send { "confirm": "RESET" } to proceed' });
+    }
+
+    const db = getDb();
+    await db.delete(users);
+
+    log.warn('Factory reset: all user accounts deleted');
+    return { message: 'All accounts deleted. Please reload to enter setup.' };
+  });
+
   // ─── Get current user ────────────────────────────────────
   app.get('/api/auth/me', { preHandler: authMiddleware }, async (request) => {
     const db = getDb();
