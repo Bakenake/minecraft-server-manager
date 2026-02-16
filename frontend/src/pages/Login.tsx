@@ -159,7 +159,7 @@ export default function Login() {
         </div>
 
         <p className="text-center text-dark-500 text-xs mt-6">
-          CraftOS Server Manager v1.0.0-beta.1
+          CraftOS Server Manager v{__APP_VERSION__}
         </p>
       </div>
     </div>

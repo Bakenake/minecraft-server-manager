@@ -1440,7 +1440,7 @@ export default function Settings() {
           </div>
 
           <p className="text-center text-dark-600 text-xs">
-            CraftOS Server Manager v1.0.0-beta.1 &middot; Built with Fastify + React
+            CraftOS Server Manager v{__APP_VERSION__} &middot; Built with Fastify + React
           </p>
         </div>
       )}

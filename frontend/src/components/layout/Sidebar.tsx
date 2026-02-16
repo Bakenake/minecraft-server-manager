@@ -155,7 +155,7 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
             </span>
           </div>
           <p className={cn('text-xs text-dark-500 mt-2', !isOpen && 'lg:hidden')}>
-            v1.0.0-beta.1
+            v{__APP_VERSION__}
           </p>
         </div>
 

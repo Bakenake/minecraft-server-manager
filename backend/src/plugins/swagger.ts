@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
+import { config } from '../config';
 
 export async function setupSwagger(app: FastifyInstance): Promise<void> {
   await app.register(swagger, {
@@ -15,7 +16,7 @@ export async function setupSwagger(app: FastifyInstance): Promise<void> {
           'Default: 100 requests per minute per IP.\n\n' +
           '## WebSocket\n' +
           'Real-time console output available at `ws://host:port/ws?token=JWT`.',
-        version: '1.0.0-beta.1',
+        version: config.version,
         contact: {
           name: 'CraftOS',
           url: 'https://github.com/craftos',
