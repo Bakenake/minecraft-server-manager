@@ -98,11 +98,16 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
           log.info({ serverId: server.id, url: downloadUrl }, 'Downloading server JAR');
           await downloadFile(downloadUrl, jarPath);
           log.info({ serverId: server.id }, 'Server JAR downloaded');
-        } catch (downloadError) {
-          log.warn({ serverId: server.id, error: downloadError }, 'Failed to download JAR - manual upload required');
+        } catch (downloadError: any) {
+          log.warn({ serverId: server.id, error: downloadError }, 'Failed to download JAR — manual upload required');
+          return {
+            ...server,
+            jarDownloaded: false,
+            jarDownloadError: downloadError?.message || 'Failed to download server JAR',
+          };
         }
 
-        return server;
+        return { ...server, jarDownloaded: true };
       } catch (error) {
         log.error({ error }, 'Failed to create server');
         return reply.status(500).send({ error: 'Failed to create server' });

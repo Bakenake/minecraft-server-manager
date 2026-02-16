@@ -9,6 +9,7 @@ import { ServerInstance, ServerEvent, ServerStatus } from './server-instance';
 import { config } from '../config';
 import { createChildLogger } from '../utils/logger';
 import { notify } from './notification.service';
+import { getBestJavaPath } from '../utils/java-installer';
 import { PlayerService } from './player.service';
 
 const log = createChildLogger('server-manager');
@@ -98,7 +99,7 @@ export class ServerManager extends EventEmitter {
       version: data.version,
       directory: serverDir,
       jarFile: data.jarFile,
-      javaPath: data.javaPath ?? config.defaults.javaPath,
+      javaPath: data.javaPath || getBestJavaPath(),
       minRam: data.minRam ?? config.defaults.minRam,
       maxRam: data.maxRam ?? config.defaults.maxRam,
       jvmFlags: data.jvmFlags ?? '',

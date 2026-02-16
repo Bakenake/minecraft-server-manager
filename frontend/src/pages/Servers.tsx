@@ -58,12 +58,18 @@ function CreateServerDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState(0);
 
+  // Fetch available versions when dialog opens or server type changes
   useEffect(() => {
     if (isOpen) {
       api.get(`/servers/versions/${form.type}`).then(({ data }) => {
         setVersions(data.versions || []);
       }).catch(() => {});
+    }
+  }, [isOpen, form.type]);
 
+  // Fetch Java installations once when dialog opens (not on every type change)
+  useEffect(() => {
+    if (isOpen) {
       api.get('/servers/java').then(({ data }) => {
         setJavaVersions(data.installations || []);
         if (data.recommended && data.recommended !== 'java') {
@@ -73,14 +79,18 @@ function CreateServerDialog({
         }
       }).catch(() => {});
     }
-  }, [isOpen, form.type]);
+  }, [isOpen]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      await createServer(form);
-      toast.success(`Server "${form.name}" created!`);
+      const result = await createServer(form) as any;
+      if (result.jarDownloaded === false) {
+        toast.error(`Server created but JAR download failed: ${result.jarDownloadError || 'Unknown error'}. You may need to upload the JAR manually.`, { duration: 8000 });
+      } else {
+        toast.success(`Server "${form.name}" created!`);
+      }
       await fetchServers();
       onClose();
     } catch (err: any) {

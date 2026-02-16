@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { createChildLogger } from '../utils/logger';
 import { Server } from '../db/schema';
+import { getBestJavaPath } from '../utils/java-installer';
 
 const log = createChildLogger('server-instance');
 
@@ -95,7 +96,8 @@ export class ServerInstance extends EventEmitter {
       throw new Error(`Server ${this.id} is already ${this.status}`);
     }
 
-    const { directory, jarFile, javaPath, minRam, maxRam, jvmFlags } = this.serverConfig;
+    const { directory, jarFile, minRam, maxRam, jvmFlags } = this.serverConfig;
+    let javaPath = this.serverConfig.javaPath;
     const serverDir = directory;
     const jarPath = path.join(serverDir, jarFile);
 
@@ -104,7 +106,21 @@ export class ServerInstance extends EventEmitter {
       throw new Error(`Server directory does not exist: ${serverDir}`);
     }
     if (!fs.existsSync(jarPath)) {
-      throw new Error(`Server JAR not found: ${jarPath}`);
+      throw new Error(`Server JAR not found: ${jarPath}. The server JAR may not have downloaded correctly — try re-downloading it from the server settings.`);
+    }
+
+    // Resolve Java path — fall back to best available if stored path is invalid
+    if (javaPath !== 'java' && !fs.existsSync(javaPath)) {
+      const fallback = getBestJavaPath();
+      log.warn({ serverId: this.id, stored: javaPath, fallback }, 'Stored Java path not found, falling back');
+      javaPath = fallback;
+    } else if (javaPath === 'java') {
+      // Bare 'java' — try to resolve to bundled/best path first
+      const best = getBestJavaPath();
+      if (best !== 'java') {
+        log.info({ serverId: this.id, resolved: best }, 'Resolved bare java to bundled path');
+        javaPath = best;
+      }
     }
 
     // Accept EULA
