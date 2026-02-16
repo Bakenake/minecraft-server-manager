@@ -91,6 +91,16 @@ export default function Subscription() {
   const [generatingTrial, setGeneratingTrial] = useState(false);
   const [trialMinutes, setTrialMinutes] = useState(15);
 
+  // Admin key management state
+  const [generatedKeys, setGeneratedKeys] = useState<any[]>([]);
+  const [loadingKeys, setLoadingKeys] = useState(false);
+  const [generatingKey, setGeneratingKey] = useState(false);
+  const [newKeyEmail, setNewKeyEmail] = useState('');
+  const [newKeyNote, setNewKeyNote] = useState('');
+  const [newKeyDuration, setNewKeyDuration] = useState<'monthly' | 'yearly' | 'lifetime'>('lifetime');
+  const [showKeyManager, setShowKeyManager] = useState(false);
+  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+
   useEffect(() => {
     fetchStatus();
     fetchTiers();
@@ -185,6 +195,65 @@ export default function Subscription() {
       setGeneratingTrial(false);
     }
   };
+
+  // ─── Admin key management handlers ──────────────────────
+  const fetchKeys = useCallback(async () => {
+    setLoadingKeys(true);
+    try {
+      const { data } = await api.get('/subscription/keys');
+      setGeneratedKeys(data.keys || []);
+    } catch {
+      // Non-admin or error — silently fail
+    } finally {
+      setLoadingKeys(false);
+    }
+  }, []);
+
+  const handleGenerateKey = async () => {
+    setGeneratingKey(true);
+    try {
+      const { data } = await api.post('/subscription/generate-key', {
+        email: newKeyEmail || undefined,
+        note: newKeyNote || undefined,
+        duration: newKeyDuration,
+      });
+      toast.success(`Key generated: ${data.licenseKey}`);
+      setNewKeyEmail('');
+      setNewKeyNote('');
+      // Copy to clipboard automatically
+      navigator.clipboard.writeText(data.licenseKey);
+      setCopiedKeyId(data.id);
+      setTimeout(() => setCopiedKeyId(null), 3000);
+      fetchKeys();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to generate key');
+    } finally {
+      setGeneratingKey(false);
+    }
+  };
+
+  const handleRevokeKey = async (id: string, key: string) => {
+    if (!confirm(`Revoke key ${key}? This cannot be undone and will deactivate the user's premium access.`)) return;
+    try {
+      await api.post(`/subscription/keys/${id}/revoke`);
+      toast.success('Key revoked');
+      fetchKeys();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed to revoke key');
+    }
+  };
+
+  const copyKey = (key: string, id: string) => {
+    navigator.clipboard.writeText(key);
+    setCopiedKeyId(id);
+    toast.success('Key copied to clipboard');
+    setTimeout(() => setCopiedKeyId(null), 3000);
+  };
+
+  // Load keys when key manager is opened
+  useEffect(() => {
+    if (showKeyManager) fetchKeys();
+  }, [showKeyManager, fetchKeys]);
 
   const handleDeactivate = async () => {
     if (!confirm('Are you sure you want to deactivate your license? You can reactivate it later.')) return;
@@ -601,6 +670,181 @@ export default function Subscription() {
           </div>
         </div>
       )}
+
+      {/* ─── Admin Key Manager ───── */}
+      <div className="card">
+        <button
+          onClick={() => setShowKeyManager(!showKeyManager)}
+          className="w-full flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-accent-500/10 rounded-lg flex items-center justify-center">
+              <KeyIcon className="w-5 h-5 text-accent-400" />
+            </div>
+            <div className="text-left">
+              <h3 className="text-lg font-semibold text-dark-100">License Key Manager</h3>
+              <p className="text-xs text-dark-500">Generate, view, and manage premium keys to give to users</p>
+            </div>
+          </div>
+          <CogIcon className={cn('w-5 h-5 text-dark-400 transition-transform', showKeyManager && 'rotate-90')} />
+        </button>
+
+        {showKeyManager && (
+          <div className="mt-6 space-y-6">
+            {/* Generate New Key Form */}
+            <div className="p-4 bg-dark-800 rounded-lg border border-dark-700">
+              <h4 className="text-sm font-medium text-dark-200 mb-3">Generate New Key</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                <div>
+                  <label className="block text-xs text-dark-500 mb-1">Recipient Email (optional)</label>
+                  <input
+                    type="email"
+                    value={newKeyEmail}
+                    onChange={(e) => setNewKeyEmail(e.target.value)}
+                    placeholder="user@example.com"
+                    className="input w-full text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-dark-500 mb-1">Note (optional)</label>
+                  <input
+                    type="text"
+                    value={newKeyNote}
+                    onChange={(e) => setNewKeyNote(e.target.value)}
+                    placeholder="e.g. Beta tester reward"
+                    className="input w-full text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-dark-500 mb-1">Duration</label>
+                  <div className="flex gap-2">
+                    {(['monthly', 'yearly', 'lifetime'] as const).map((dur) => (
+                      <button
+                        key={dur}
+                        onClick={() => setNewKeyDuration(dur)}
+                        className={cn(
+                          'px-3 py-2 rounded-lg text-xs font-medium transition-all flex-1',
+                          newKeyDuration === dur
+                            ? 'bg-accent-500 text-white'
+                            : 'bg-dark-700 text-dark-300 hover:bg-dark-600',
+                        )}
+                      >
+                        {dur.charAt(0).toUpperCase() + dur.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleGenerateKey}
+                disabled={generatingKey}
+                className="btn btn-primary text-sm flex items-center gap-2"
+              >
+                <KeyIcon className="w-4 h-4" />
+                {generatingKey ? 'Generating...' : 'Generate Premium Key'}
+              </button>
+            </div>
+
+            {/* Keys List */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium text-dark-200">
+                  Generated Keys ({generatedKeys.length})
+                </h4>
+                <button
+                  onClick={fetchKeys}
+                  disabled={loadingKeys}
+                  className="text-dark-400 hover:text-dark-200 text-xs flex items-center gap-1"
+                >
+                  <ArrowPathIcon className={cn('w-3 h-3', loadingKeys && 'animate-spin')} />
+                  Refresh
+                </button>
+              </div>
+
+              {loadingKeys ? (
+                <div className="text-center py-8 text-dark-500 text-sm">Loading keys...</div>
+              ) : generatedKeys.length === 0 ? (
+                <div className="text-center py-8 text-dark-500 text-sm">
+                  No keys generated yet. Create one above to give to a user.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {generatedKeys.map((k) => (
+                    <div
+                      key={k.id}
+                      className={cn(
+                        'flex items-center gap-3 p-3 rounded-lg border',
+                        k.status === 'revoked'
+                          ? 'bg-danger-500/5 border-danger-500/20 opacity-60'
+                          : k.isExpired
+                            ? 'bg-warning-500/5 border-warning-500/20 opacity-70'
+                            : k.isBound
+                              ? 'bg-success-500/5 border-success-500/20'
+                              : 'bg-dark-800 border-dark-700',
+                      )}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <code className="text-sm font-mono text-dark-200 truncate">{k.licenseKey}</code>
+                          <button
+                            onClick={() => copyKey(k.licenseKey, k.id)}
+                            className="text-dark-400 hover:text-accent-400 flex-shrink-0"
+                            title="Copy key"
+                          >
+                            {copiedKeyId === k.id ? (
+                              <CheckCircleIcon className="w-4 h-4 text-success-400" />
+                            ) : (
+                              <ClipboardDocumentIcon className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-xs text-dark-500">
+                          {k.email && <span>{k.email}</span>}
+                          <span>{k.isBound ? 'Redeemed' : 'Available'}</span>
+                          {k.expiresAt && (
+                            <span>
+                              {k.isExpired ? 'Expired' : `Expires ${new Date(k.expiresAt).toLocaleDateString()}`}
+                            </span>
+                          )}
+                          {!k.expiresAt && <span>Lifetime</span>}
+                          <span>{new Date(k.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {/* Status badge */}
+                        <span
+                          className={cn(
+                            'text-xs px-2 py-0.5 rounded-full font-medium',
+                            k.status === 'active' && !k.isExpired
+                              ? 'bg-success-500/20 text-success-400'
+                              : k.status === 'revoked'
+                                ? 'bg-danger-500/20 text-danger-400'
+                                : 'bg-warning-500/20 text-warning-400',
+                          )}
+                        >
+                          {k.status === 'revoked' ? 'Revoked' : k.isExpired ? 'Expired' : k.isBound ? 'Active' : 'Unredeemed'}
+                        </span>
+
+                        {/* Revoke button */}
+                        {k.status !== 'revoked' && !k.isExpired && (
+                          <button
+                            onClick={() => handleRevokeKey(k.id, k.licenseKey)}
+                            className="text-xs text-danger-400 hover:text-danger-300 px-2 py-1 rounded hover:bg-danger-500/10"
+                            title="Revoke this key"
+                          >
+                            Revoke
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ─── Trial Key Generator (Dev/Testing) ───── */}
       <div className="card border border-dashed border-accent-500/30">
