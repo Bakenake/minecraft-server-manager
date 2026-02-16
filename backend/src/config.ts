@@ -41,7 +41,7 @@ const envSchema = z.object({
   HTTPS_CERT: z.string().optional(),
   HTTPS_KEY: z.string().optional(),
 
-  LICENSE_SERVER_URL: z.string().default('https://api.craftos.app/v1/license'),
+  LICENSE_SERVER_URL: z.string().default('https://renegadesmp.com/license/v1/license'),
 });
 
 const parsed = envSchema.safeParse(process.env);

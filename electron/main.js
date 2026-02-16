@@ -234,7 +234,7 @@ function startBackend() {
       BACKUPS_DIR: path.join(app.getPath('userData'), 'backups'),
       LOGS_DIR: path.join(app.getPath('userData'), 'logs'),
       APP_URL: `http://localhost:${BACKEND_PORT}`,
-      LICENSE_SERVER_URL: 'https://api.craftos.app/v1/license',
+      LICENSE_SERVER_URL: 'https://renegadesmp.com/license/v1/license',
       // In production, tell Electron binary to act as Node.js
       ...(isDev ? {} : { ELECTRON_RUN_AS_NODE: '1' }),
     };
