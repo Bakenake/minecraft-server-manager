@@ -1,5 +1,12 @@
 name: Release
 
+# Push a version tag (e.g. v1.0.0) to build + publish installers automatically.
+# Users with existing installs will be notified and auto-updated via electron-updater.
+#
+# Workflow: bump version in package.json → git tag v1.x.x → git push --tags
+#   → This runs → Builds Win/Mac/Linux → Publishes GitHub Release with installers
+#   → electron-updater picks up latest.yml → users get notified
+
 on:
   push:
     tags:
@@ -8,74 +15,84 @@ on:
 permissions:
   contents: write
 
-jobs:
-  build-and-release:
-    name: Build for ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+env:
+  NODE_OPTIONS: --max_old_space_size=4096
 
+jobs:
+  release:
+    name: Build & Publish (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: node20-linux-x64
-            artifact: craftos-linux-x64
-            extension: ''
           - os: windows-latest
-            target: node20-win-x64
-            artifact: craftos-win-x64
-            extension: '.exe'
+            platform: win
+          - os: ubuntu-latest
+            platform: linux
           - os: macos-latest
-            target: node20-macos-x64
-            artifact: craftos-macos-x64
-            extension: ''
+            platform: mac
 
     steps:
+      # ── Checkout ──────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ── Node.js ───────────────────────────────────────────
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: 22.x
           cache: npm
 
-      - name: Install dependencies
+      # ── Install ───────────────────────────────────────────
+      - name: Install root dependencies
         run: npm ci
 
-      - name: Build backend
+      - name: Install backend dependencies
+        run: npm ci --workspace=backend
+
+      - name: Install frontend dependencies
+        run: npm ci --workspace=frontend
+
+      # ── Build ─────────────────────────────────────────────
+      - name: Build backend (TypeScript → JS)
         run: npx tsc --project tsconfig.json
         working-directory: backend
 
-      - name: Build frontend
+      - name: Build frontend (Vite)
         run: npx vite build
         working-directory: frontend
 
-      - name: Package with pkg
-        run: |
-          npx pkg backend/dist/index.js \
-            --target ${{ matrix.target }} \
-            --output release/CraftOS${{ matrix.extension }} \
-            --compress GZip
-
-      - name: Prepare release archive
-        shell: bash
-        run: |
-          mkdir -p release-package
-          cp release/CraftOS${{ matrix.extension }} release-package/
-          cp -r frontend/dist release-package/public
-          cp .env.example release-package/
-          cp README.md release-package/
-
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cd release-package && 7z a -tzip ../${{ matrix.artifact }}.zip . && cd ..
-          else
-            tar -czf ${{ matrix.artifact }}.tar.gz -C release-package .
-          fi
-
-      - name: Upload Release Asset
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            ${{ matrix.artifact }}.*
+      # ── Rebuild native modules for Electron ───────────────
+      - name: Rebuild native modules
+        run: npx electron-rebuild -f -w better-sqlite3
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          npm_config_build_from_source: true
+
+      # ── Electron Builder — build + publish ────────────────
+      - name: Build Electron app & publish
+        run: npx electron-builder --config electron-builder.json --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Code signing (optional — set these in repo secrets):
+          # CSC_LINK: ${{ secrets.CSC_LINK }}
+          # CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+
+      # ── Upload artifacts as fallback ──────────────────────
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: craftos-${{ matrix.platform }}
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
+            release/*.deb
+            release/*.yml
+            release/*.yaml
+            release/*.blockmap
+          retention-days: 30
+          if-no-files-found: warn

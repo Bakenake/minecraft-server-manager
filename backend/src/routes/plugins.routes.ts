@@ -5,6 +5,7 @@ import { PluginService } from '../services/plugin.service';
 import { MarketplaceService } from '../services/marketplace.service';
 import { ServerManager } from '../services/server-manager';
 import { audit } from '../services/audit.service';
+import { requireFeature } from '../auth/feature-gate';
 
 export async function pluginRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
@@ -130,7 +131,7 @@ export async function pluginRoutes(app: FastifyInstance): Promise<void> {
   // ─── Marketplace Endpoints ──────────────────────────────────
 
   // Search marketplace
-  app.get('/api/servers/:id/marketplace/search', async (request, reply) => {
+  app.get('/api/servers/:id/marketplace/search', { preHandler: requireFeature('marketplace') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const query = request.query as {
       q?: string;
@@ -164,7 +165,7 @@ export async function pluginRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Get project details
-  app.get('/api/servers/:id/marketplace/project/:source/:projectId', async (request, reply) => {
+  app.get('/api/servers/:id/marketplace/project/:source/:projectId', { preHandler: requireFeature('marketplace') }, async (request, reply) => {
     const { id, source, projectId } = request.params as {
       id: string;
       source: string;
@@ -184,7 +185,7 @@ export async function pluginRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Get project versions (filtered by server type and MC version)
-  app.get('/api/servers/:id/marketplace/versions/:source/:projectId', async (request, reply) => {
+  app.get('/api/servers/:id/marketplace/versions/:source/:projectId', { preHandler: requireFeature('marketplace') }, async (request, reply) => {
     const { id, source, projectId } = request.params as {
       id: string;
       source: string;
@@ -213,7 +214,7 @@ export async function pluginRoutes(app: FastifyInstance): Promise<void> {
   // Install plugin/mod from marketplace
   app.post(
     '/api/servers/:id/marketplace/install',
-    { preHandler: requireRole('admin', 'moderator') },
+    { preHandler: [requireRole('admin', 'moderator'), requireFeature('marketplace')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const body = request.body as {
@@ -263,7 +264,7 @@ export async function pluginRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Get available categories for server type
-  app.get('/api/servers/:id/marketplace/categories', async (request, reply) => {
+  app.get('/api/servers/:id/marketplace/categories', { preHandler: requireFeature('marketplace') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
       const { type } = await getServerDir(id);

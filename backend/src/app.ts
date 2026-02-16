@@ -24,6 +24,9 @@ import { worldRoutes } from './routes/world.routes';
 import { templateRoutes } from './routes/template.routes';
 import { advancedRoutes } from './routes/advanced.routes';
 import { registerPermissionRoutes } from './routes/permissions.routes';
+import subscriptionRoutes from './routes/subscription.routes';
+import adRoutes from './routes/ad.routes';
+import { networkRoutes } from './routes/network.routes';
 import { setupWebSocket } from './ws';
 
 const log = createChildLogger('app');
@@ -34,6 +37,25 @@ export async function buildApp() {
     maxParamLength: 512,
     bodyLimit: 50 * 1024 * 1024, // 50MB for file uploads
   });
+
+  // ─── Raw Body Support (for Stripe webhooks) ───────────────
+  // Add a custom content type parser that preserves the raw body
+  // while still parsing JSON. The raw body is needed for Stripe
+  // webhook signature verification.
+  app.addContentTypeParser(
+    'application/json',
+    { parseAs: 'buffer' },
+    (req, body: Buffer, done) => {
+      // Store raw body on the request for webhook signature verification
+      (req as any).rawBody = body;
+      try {
+        const json = JSON.parse(body.toString());
+        done(null, json);
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    }
+  );
 
   // ─── Security Plugins ─────────────────────────────────────
   await app.register(helmet, {
@@ -67,7 +89,14 @@ export async function buildApp() {
   });
 
   // ─── Static file serving (frontend in production) ─────────
-  const frontendPath = path.join(__dirname, '..', '..', 'frontend', 'dist');
+  // In development: frontend is at ../../frontend/dist relative to backend/src
+  // In Electron production: electron-builder copies frontend to backend/dist/public/
+  const possibleFrontendPaths = [
+    path.join(__dirname, 'public'),                          // Electron production
+    path.join(__dirname, '..', 'public'),                    // Electron alt path
+    path.join(__dirname, '..', '..', 'frontend', 'dist'),   // Development
+  ];
+  const frontendPath = possibleFrontendPaths.find(p => fs.existsSync(p)) || possibleFrontendPaths[possibleFrontendPaths.length - 1];
   if (fs.existsSync(frontendPath)) {
     await app.register(fastifyStatic, {
       root: frontendPath,
@@ -91,6 +120,9 @@ export async function buildApp() {
   await app.register(templateRoutes);
   await app.register(advancedRoutes);
   registerPermissionRoutes(app);
+  await app.register(subscriptionRoutes);
+  await app.register(adRoutes);
+  await app.register(networkRoutes);
 
   // ─── WebSocket Routes ────────────────────────────────────
   await setupWebSocket(app);

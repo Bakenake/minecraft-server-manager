@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { authMiddleware, requireRole } from '../auth/middleware';
 import { BackupService } from '../services/backup.service';
 import { audit } from '../services/audit.service';
+import { requireFeature, requireBackupSlot } from '../auth/feature-gate';
 
 export async function backupRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
@@ -19,7 +20,7 @@ export async function backupRoutes(app: FastifyInstance): Promise<void> {
   // Create backup
   app.post(
     '/api/servers/:id/backups',
-    { preHandler: requireRole('admin', 'moderator') },
+    { preHandler: [requireRole('admin', 'moderator'), requireBackupSlot()] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const schema = z.object({
@@ -82,7 +83,7 @@ export async function backupRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Download backup
-  app.get('/api/backups/:backupId/download', async (request, reply) => {
+  app.get('/api/backups/:backupId/download', { preHandler: requireFeature('backupDownload') }, async (request, reply) => {
     const { backupId } = request.params as { backupId: string };
     try {
       const { filePath, fileName } = await backupService.getBackupPath(backupId);
@@ -99,7 +100,7 @@ export async function backupRoutes(app: FastifyInstance): Promise<void> {
   // Apply retention policy
   app.post(
     '/api/servers/:id/backups/retention',
-    { preHandler: requireRole('admin') },
+    { preHandler: [requireRole('admin'), requireFeature('backupRetention')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const schema = z.object({

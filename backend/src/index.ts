@@ -6,6 +6,8 @@ import { MetricsService } from './services/metrics.service';
 import { SchedulerService } from './services/scheduler.service';
 import { SFTPService } from './services/sftp.service';
 import { DiscordBridge } from './services/discord-bridge.service';
+import { LicenseService } from './services/license.service';
+import { AntiPiracyService } from './services/anti-piracy';
 import { logger } from './utils/logger';
 
 async function main(): Promise<void> {
@@ -28,6 +30,17 @@ async function main(): Promise<void> {
 
   const schedulerService = SchedulerService.getInstance();
   await schedulerService.initialize();
+
+  // ─── Initialize License System ─────────────────────────────
+  const licenseService = LicenseService.getInstance();
+  await licenseService.ensureFreeLicense();
+  licenseService.startPeriodicValidation();
+  logger.info('License system initialized');
+
+  // ─── Initialize Anti-Piracy ────────────────────────────────
+  const antiPiracy = AntiPiracyService.getInstance();
+  await antiPiracy.initialize();
+  logger.info('Security module initialized');
 
   // ─── Build and Start HTTP Server ──────────────────────────
   const app = await buildApp();
@@ -72,6 +85,8 @@ async function main(): Promise<void> {
 
       // Stop services
       metricsService.stop();
+      licenseService.stopPeriodicValidation();
+      antiPiracy.shutdown();
       await schedulerService.shutdown();
 
       // Stop all Minecraft servers

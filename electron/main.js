@@ -1,92 +1,189 @@
-const { app, BrowserWindow, Tray, Menu, dialog, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, dialog, shell, nativeImage, ipcMain, Notification } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
-const { spawn } = require('child_process');
+const { fork } = require('child_process');
 const log = require('electron-log');
 
-// Configure logging
+// ─── Logging ──────────────────────────────────────────────
 log.transports.file.level = 'info';
+log.transports.file.maxSize = 10 * 1024 * 1024; // 10 MB
 autoUpdater.logger = log;
 
 let mainWindow = null;
 let tray = null;
 let backendProcess = null;
 let isQuitting = false;
+let updateAvailable = false;
+let updateDownloaded = false;
+let downloadProgress = 0;
 
 const BACKEND_PORT = process.env.PORT || 3001;
 const isDev = !app.isPackaged;
 
+// Check for updates every 30 minutes
+const UPDATE_CHECK_INTERVAL = 30 * 60 * 1000;
+
+// ─── IPC Handlers (renderer ↔ main) ───────────────────────
+function setupIPC() {
+  ipcMain.handle('app:getVersion', () => app.getVersion());
+
+  ipcMain.handle('app:checkForUpdates', () => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  });
+
+  ipcMain.handle('app:getUpdateStatus', () => ({
+    updateAvailable,
+    updateDownloaded,
+    downloadProgress,
+    currentVersion: app.getVersion(),
+  }));
+
+  ipcMain.handle('app:installUpdate', () => {
+    if (updateDownloaded) {
+      isQuitting = true;
+      autoUpdater.quitAndInstall(false, true);
+    }
+  });
+
+  ipcMain.handle('app:downloadUpdate', () => {
+    if (updateAvailable && !updateDownloaded) {
+      autoUpdater.downloadUpdate();
+    }
+  });
+}
+
+function sendToRenderer(channel, data = {}) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, data);
+  }
+}
+
 // ─── Auto-Updater Setup ──────────────────────────────────
 function setupAutoUpdater() {
-  autoUpdater.autoDownload = false;
+  // Auto-download in background for seamless updates
+  autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowDowngrade = false;
 
   autoUpdater.on('checking-for-update', () => {
     log.info('Checking for updates...');
+    sendToRenderer('update:checking');
   });
 
   autoUpdater.on('update-available', (info) => {
     log.info(`Update available: v${info.version}`);
-    dialog.showMessageBox(mainWindow, {
-      type: 'info',
-      title: 'Update Available',
-      message: `CraftOS v${info.version} is available`,
-      detail: `Current version: v${app.getVersion()}\nNew version: v${info.version}\n\nWould you like to download it now?`,
-      buttons: ['Download & Install', 'Later'],
-      defaultId: 0,
-      cancelId: 1,
-    }).then(({ response }) => {
-      if (response === 0) {
-        autoUpdater.downloadUpdate();
-      }
+    updateAvailable = true;
+    sendToRenderer('update:available', {
+      version: info.version,
+      releaseDate: info.releaseDate,
+      releaseNotes: info.releaseNotes,
     });
+
+    // System notification
+    if (Notification.isSupported()) {
+      new Notification({
+        title: 'CraftOS Update Available',
+        body: `Version ${info.version} is downloading in the background.`,
+        icon: path.join(__dirname, 'assets', 'icon.png'),
+      }).show();
+    }
   });
 
-  autoUpdater.on('update-not-available', () => {
-    log.info('No updates available');
+  autoUpdater.on('update-not-available', (info) => {
+    log.info('App is up to date');
+    updateAvailable = false;
+    sendToRenderer('update:not-available', { version: info.version });
   });
 
   autoUpdater.on('download-progress', (progress) => {
-    log.info(`Download progress: ${Math.round(progress.percent)}%`);
-    if (mainWindow) {
-      mainWindow.setProgressBar(progress.percent / 100);
-    }
+    downloadProgress = Math.round(progress.percent);
+    log.info(`Download progress: ${downloadProgress}%`);
+    if (mainWindow) mainWindow.setProgressBar(progress.percent / 100);
+    sendToRenderer('update:progress', {
+      percent: downloadProgress,
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total,
+    });
   });
 
   autoUpdater.on('update-downloaded', (info) => {
     log.info(`Update downloaded: v${info.version}`);
-    if (mainWindow) {
-      mainWindow.setProgressBar(-1);
+    updateDownloaded = true;
+    downloadProgress = 100;
+    if (mainWindow) mainWindow.setProgressBar(-1);
+
+    sendToRenderer('update:downloaded', {
+      version: info.version,
+      releaseNotes: info.releaseNotes,
+    });
+
+    // Refresh tray menu to show "Restart to Update"
+    if (tray) tray.setContextMenu(buildTrayMenu());
+
+    // System notification
+    if (Notification.isSupported()) {
+      const n = new Notification({
+        title: 'CraftOS Update Ready',
+        body: `Version ${info.version} downloaded. Restart to apply.`,
+        icon: path.join(__dirname, 'assets', 'icon.png'),
+      });
+      n.on('click', () => showUpdateReadyDialog(info.version));
+      n.show();
     }
-    dialog.showMessageBox(mainWindow, {
+
+    showUpdateReadyDialog(info.version);
+  });
+
+  autoUpdater.on('error', (err) => {
+    log.error('Auto-updater error:', err);
+    sendToRenderer('update:error', { message: err?.message || 'Unknown error' });
+  });
+}
+
+function showUpdateReadyDialog(version) {
+  if (!mainWindow) return;
+  dialog
+    .showMessageBox(mainWindow, {
       type: 'info',
       title: 'Update Ready',
-      message: `CraftOS v${info.version} has been downloaded`,
-      detail: 'The update will be installed when you restart the application.',
+      message: `CraftOS v${version} is ready to install`,
+      detail:
+        'The update has been downloaded. Restart to apply.\n\n' +
+        'Your servers will be gracefully stopped and restarted after the update.',
       buttons: ['Restart Now', 'Later'],
       defaultId: 0,
       cancelId: 1,
-    }).then(({ response }) => {
+    })
+    .then(({ response }) => {
       if (response === 0) {
         isQuitting = true;
         autoUpdater.quitAndInstall(false, true);
       }
     });
-  });
+}
 
-  autoUpdater.on('error', (err) => {
-    log.error('Auto-updater error:', err);
-  });
+function startPeriodicUpdateChecks() {
+  // First check 10s after startup
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((e) => log.warn('Initial update check failed:', e.message));
+  }, 10000);
+
+  // Then every 30 minutes
+  setInterval(() => {
+    if (!updateDownloaded) {
+      autoUpdater.checkForUpdates().catch((e) => log.warn('Periodic update check failed:', e.message));
+    }
+  }, UPDATE_CHECK_INTERVAL);
 }
 
 // ─── Backend Process ─────────────────────────────────────
 function startBackend() {
   return new Promise((resolve, reject) => {
     const backendPath = isDev
-      ? path.join(__dirname, 'backend', 'dist', 'index.js')
+      ? path.join(__dirname, '..', 'backend', 'dist', 'index.js')
       : path.join(process.resourcesPath, 'backend', 'dist', 'index.js');
 
-    // Set environment variables for the backend
     const env = {
       ...process.env,
       PORT: String(BACKEND_PORT),
@@ -95,20 +192,27 @@ function startBackend() {
       SERVERS_DIR: path.join(app.getPath('userData'), 'servers'),
       BACKUPS_DIR: path.join(app.getPath('userData'), 'backups'),
       LOGS_DIR: path.join(app.getPath('userData'), 'logs'),
+      APP_URL: `http://localhost:${BACKEND_PORT}`,
+      // In production, tell Electron binary to act as Node.js
+      ...(isDev ? {} : { ELECTRON_RUN_AS_NODE: '1' }),
     };
 
     log.info(`Starting backend from: ${backendPath}`);
 
-    backendProcess = spawn(process.execPath.includes('electron') && isDev ? 'node' : process.execPath, [backendPath], {
+    backendProcess = fork(backendPath, [], {
       env,
-      cwd: isDev ? __dirname : process.resourcesPath,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      cwd: isDev ? path.join(__dirname, '..') : process.resourcesPath,
+      stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+      ...(isDev ? {} : { execPath: process.execPath }),
     });
+
+    let resolved = false;
 
     backendProcess.stdout?.on('data', (data) => {
       const output = data.toString();
       log.info(`[backend] ${output.trim()}`);
-      if (output.includes('Server listening') || output.includes('listening on')) {
+      if (!resolved && (output.includes('Server running at') || output.includes('Server listening') || output.includes('listening on'))) {
+        resolved = true;
         resolve(true);
       }
     });
@@ -119,27 +223,30 @@ function startBackend() {
 
     backendProcess.on('error', (err) => {
       log.error('Failed to start backend:', err);
-      reject(err);
+      if (!resolved) { resolved = true; reject(err); }
     });
 
     backendProcess.on('exit', (code) => {
       log.info(`Backend exited with code ${code}`);
-      if (!isQuitting) {
-        // Restart backend if it crashes
-        setTimeout(() => startBackend(), 3000);
+      if (!isQuitting && resolved) {
+        log.info('Restarting backend in 3 seconds...');
+        setTimeout(() => startBackend().catch(() => {}), 3000);
       }
     });
 
-    // Timeout: if backend doesn't signal ready in 30s, resolve anyway
-    setTimeout(() => resolve(true), 30000);
+    setTimeout(() => { if (!resolved) { resolved = true; resolve(true); } }, 30000);
   });
 }
 
 function stopBackend() {
-  if (backendProcess) {
-    backendProcess.kill();
+  return new Promise((resolve) => {
+    if (!backendProcess) { resolve(); return; }
+    const proc = backendProcess;
     backendProcess = null;
-  }
+    const killTimer = setTimeout(() => { try { proc.kill('SIGKILL'); } catch {} resolve(); }, 5000);
+    proc.on('exit', () => { clearTimeout(killTimer); resolve(); });
+    try { proc.kill('SIGTERM'); } catch { clearTimeout(killTimer); resolve(); }
+  });
 }
 
 // ─── Main Window ──────────────────────────────────────────
@@ -154,6 +261,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
     backgroundColor: '#0a0a0f',
     show: false,
@@ -191,6 +299,37 @@ function createWindow() {
 }
 
 // ─── System Tray ──────────────────────────────────────────
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    {
+      label: 'Open CraftOS',
+      click: () => {
+        if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
+        else createWindow();
+      },
+    },
+    { type: 'separator' },
+    {
+      label: updateDownloaded ? '⟳ Restart to Update' : 'Check for Updates',
+      click: () => {
+        if (updateDownloaded) {
+          isQuitting = true;
+          autoUpdater.quitAndInstall(false, true);
+        } else {
+          autoUpdater.checkForUpdates().catch(() => {});
+        }
+      },
+    },
+    { type: 'separator' },
+    { label: `Version ${app.getVersion()}`, enabled: false },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => { isQuitting = true; app.quit(); },
+    },
+  ]);
+}
+
 function createTray() {
   const iconPath = path.join(__dirname, 'assets', 'icon.png');
   let trayIcon;
@@ -203,50 +342,12 @@ function createTray() {
 
   tray = new Tray(trayIcon);
   tray.setToolTip('CraftOS Server Manager');
-
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Open CraftOS',
-      click: () => {
-        if (mainWindow) {
-          mainWindow.show();
-          mainWindow.focus();
-        } else {
-          createWindow();
-        }
-      },
-    },
-    { type: 'separator' },
-    {
-      label: 'Check for Updates',
-      click: () => {
-        autoUpdater.checkForUpdates();
-      },
-    },
-    { type: 'separator' },
-    {
-      label: `Version ${app.getVersion()}`,
-      enabled: false,
-    },
-    { type: 'separator' },
-    {
-      label: 'Quit',
-      click: () => {
-        isQuitting = true;
-        app.quit();
-      },
-    },
-  ]);
-
-  tray.setContextMenu(contextMenu);
+  tray.setContextMenu(buildTrayMenu());
 
   tray.on('click', () => {
     if (mainWindow) {
-      if (mainWindow.isVisible()) {
-        mainWindow.focus();
-      } else {
-        mainWindow.show();
-      }
+      if (mainWindow.isVisible()) mainWindow.focus();
+      else mainWindow.show();
     } else {
       createWindow();
     }
@@ -270,6 +371,8 @@ if (!gotTheLock) {
   app.whenReady().then(async () => {
     log.info(`CraftOS v${app.getVersion()} starting...`);
 
+    setupIPC();
+
     // Start the backend server
     try {
       await startBackend();
@@ -287,20 +390,15 @@ if (!gotTheLock) {
     createWindow();
     createTray();
 
-    // Check for updates (in production only)
+    // Auto-updater (production only)
     if (!isDev) {
       setupAutoUpdater();
-      setTimeout(() => {
-        autoUpdater.checkForUpdates().catch(() => {});
-      }, 5000);
+      startPeriodicUpdateChecks();
     }
   });
 
   app.on('window-all-closed', () => {
-    // Keep running in tray on Windows/Linux
-    if (process.platform === 'darwin') {
-      // On macOS, keep in dock
-    }
+    // Stay in tray
   });
 
   app.on('activate', () => {
@@ -311,8 +409,8 @@ if (!gotTheLock) {
     }
   });
 
-  app.on('before-quit', () => {
+  app.on('before-quit', async () => {
     isQuitting = true;
-    stopBackend();
+    await stopBackend();
   });
 }

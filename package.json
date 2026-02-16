@@ -1,6 +1,6 @@
 {
   "name": "craftos-server-manager",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.2",
   "description": "Professional Minecraft Server Manager with modern dashboard UI",
   "private": true,
   "main": "electron/main.js",
@@ -23,6 +23,10 @@
     "electron:build:mac": "npm run build && electron-builder --config electron-builder.json --mac",
     "electron:build:linux": "npm run build && electron-builder --config electron-builder.json --linux",
     "electron:publish": "npm run build && electron-builder --config electron-builder.json --publish always",
+    "release": "node scripts/release.js",
+    "release:patch": "node scripts/release.js patch",
+    "release:minor": "node scripts/release.js minor",
+    "release:major": "node scripts/release.js major",
     "package:win": "node scripts/package-win.js",
     "package:mac": "node scripts/package-mac.js",
     "package:linux": "node scripts/package-linux.js",
@@ -45,6 +49,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-org/craftos-server-manager"
+    "url": "https://github.com/Bakenake/minecraft-server-manager.git"
   }
 }

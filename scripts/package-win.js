@@ -4,12 +4,10 @@
  * Creates a standalone executable for Windows using pkg.
  */
 
-import { execSync } from 'child_process';
-import { mkdirSync, writeFileSync, existsSync, cpSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+const { execSync } = require('child_process');
+const { mkdirSync, writeFileSync, existsSync, cpSync } = require('fs');
+const { resolve } = require('path');
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
 function run(cmd, cwd = ROOT) {

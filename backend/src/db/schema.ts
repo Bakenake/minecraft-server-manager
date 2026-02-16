@@ -19,7 +19,7 @@ export const users = sqliteTable('users', {
 export const servers = sqliteTable('servers', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  type: text('type', { enum: ['vanilla', 'paper', 'spigot', 'forge', 'fabric'] }).notNull(),
+  type: text('type', { enum: ['vanilla', 'paper', 'spigot', 'forge', 'fabric', 'bungeecord', 'waterfall', 'velocity', 'purpur', 'sponge'] }).notNull(),
   version: text('version').notNull(),
   directory: text('directory').notNull(),
   jarFile: text('jar_file').notNull(),
@@ -178,6 +178,72 @@ export const userPermissions = sqliteTable('user_permissions', {
   granted: integer('granted', { mode: 'boolean' }).notNull().default(true),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });
+
+// ─── Licenses (subscription / monetization) ────────────────
+export const licenses = sqliteTable('licenses', {
+  id: text('id').primaryKey(), // UUID
+  licenseKey: text('license_key').notNull().unique(), // CRAFT-XXXX-XXXX-XXXX-XXXX
+  tier: text('tier', { enum: ['free', 'premium'] }).notNull().default('free'),
+  status: text('status', { enum: ['active', 'expired', 'revoked', 'suspended'] }).notNull().default('active'),
+  email: text('email').notNull(),
+  hardwareId: text('hardware_id'), // bound hardware fingerprint
+  activatedAt: integer('activated_at', { mode: 'timestamp' }),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }), // null = lifetime
+  maxServers: integer('max_servers').notNull().default(1),
+  maxRamMb: integer('max_ram_mb').notNull().default(4096),
+  maxPlayers: integer('max_players').notNull().default(10),
+  features: text('features').notNull().default('{}'), // JSON feature flags
+  stripeCustomerId: text('stripe_customer_id'), // Stripe customer ID for billing
+  stripeSubscriptionId: text('stripe_subscription_id'), // Stripe subscription for renewals
+  lastValidatedAt: integer('last_validated_at', { mode: 'timestamp' }),
+  validationFailures: integer('validation_failures').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+// ─── License Activations (hardware tracking) ───────────────
+export const licenseActivations = sqliteTable('license_activations', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  licenseId: text('license_id').notNull().references(() => licenses.id, { onDelete: 'cascade' }),
+  hardwareId: text('hardware_id').notNull(),
+  hostname: text('hostname').notNull(),
+  platform: text('platform').notNull(),
+  activatedAt: integer('activated_at', { mode: 'timestamp' }).notNull(),
+  lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }).notNull(),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+});
+
+// ─── Server Networks (proxy/BungeeCord/Velocity networks) ──────────
+export const serverNetworks = sqliteTable('server_networks', {
+  id: text('id').primaryKey(), // UUID
+  name: text('name').notNull(),
+  description: text('description').default(''),
+  proxyType: text('proxy_type', { enum: ['bungeecord', 'waterfall', 'velocity'] }).notNull(),
+  proxyServerId: text('proxy_server_id').references(() => servers.id, { onDelete: 'set null' }),
+  proxyPort: integer('proxy_port').notNull().default(25577),
+  motd: text('motd').default('A CraftOS Network'),
+  maxPlayers: integer('max_players').notNull().default(100),
+  onlineMode: integer('online_mode', { mode: 'boolean' }).notNull().default(true),
+  ipForwarding: integer('ip_forwarding', { mode: 'boolean' }).notNull().default(true),
+  status: text('status', { enum: ['stopped', 'starting', 'running', 'stopping', 'degraded'] }).notNull().default('stopped'),
+  autoStart: integer('auto_start', { mode: 'boolean' }).notNull().default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+// ─── Network Backend Servers (servers linked to a network) ─────────
+export const networkServers = sqliteTable('network_servers', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  networkId: text('network_id').notNull().references(() => serverNetworks.id, { onDelete: 'cascade' }),
+  serverId: text('server_id').notNull().references(() => servers.id, { onDelete: 'cascade' }),
+  serverAlias: text('server_alias').notNull(), // name used in proxy config (e.g., "lobby", "survival")
+  isDefault: integer('is_default', { mode: 'boolean' }).notNull().default(false), // default server players join
+  isFallback: integer('is_fallback', { mode: 'boolean' }).notNull().default(false), // fallback if main goes down
+  restricted: integer('restricted', { mode: 'boolean' }).notNull().default(false), // requires permission to join
+  priority: integer('priority').notNull().default(0), // order in server list
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+});
+
 // Export types
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -193,3 +259,10 @@ export type AuditLogEntry = typeof auditLog.$inferSelect;
 export type Feedback = typeof feedback.$inferSelect;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type UserPermission = typeof userPermissions.$inferSelect;
+export type License = typeof licenses.$inferSelect;
+export type NewLicense = typeof licenses.$inferInsert;
+export type LicenseActivation = typeof licenseActivations.$inferSelect;
+export type ServerNetwork = typeof serverNetworks.$inferSelect;
+export type NewServerNetwork = typeof serverNetworks.$inferInsert;
+export type NetworkServer = typeof networkServers.$inferSelect;
+export type NewNetworkServer = typeof networkServers.$inferInsert;

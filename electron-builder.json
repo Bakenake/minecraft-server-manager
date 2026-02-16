@@ -36,7 +36,8 @@
       }
     ],
     "icon": "assets/icon.ico",
-    "artifactName": "CraftOS-Setup-${version}.${ext}"
+    "artifactName": "CraftOS-Setup-${version}.${ext}",
+    "publisherName": "CraftOS"
   },
   "nsis": {
     "oneClick": false,
@@ -46,13 +47,14 @@
     "installerIcon": "assets/icon.ico",
     "uninstallerIcon": "assets/icon.ico",
     "installerHeaderIcon": "assets/icon.ico",
-    "shortcutName": "CraftOS Server Manager"
+    "shortcutName": "CraftOS Server Manager",
+    "differentialPackage": true
   },
   "mac": {
-    "target": ["dmg"],
+    "target": ["dmg", "zip"],
     "icon": "assets/icon.icns",
     "category": "public.app-category.utilities",
-    "artifactName": "CraftOS-${version}.${ext}"
+    "artifactName": "CraftOS-${version}-${arch}.${ext}"
   },
   "linux": {
     "target": ["AppImage", "deb"],
@@ -62,8 +64,10 @@
   },
   "publish": {
     "provider": "github",
-    "owner": "YOUR_GITHUB_USERNAME",
-    "repo": "craftos-server-manager",
+    "owner": "Bakenake",
+    "repo": "minecraft-server-manager",
     "releaseType": "release"
-  }
+  },
+  "afterSign": null,
+  "generateUpdatesFilesForAllChannels": false
 }

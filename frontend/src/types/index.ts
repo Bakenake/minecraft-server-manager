@@ -1,5 +1,7 @@
 // ─── Server Types ──────────────────────────────────────────
-export type ServerType = 'vanilla' | 'paper' | 'spigot' | 'forge' | 'fabric';
+export type ServerType = 'vanilla' | 'paper' | 'spigot' | 'forge' | 'fabric' | 'bungeecord' | 'waterfall' | 'velocity' | 'purpur' | 'sponge';
+export type ProxyType = 'bungeecord' | 'waterfall' | 'velocity';
+export type NetworkStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'degraded';
 export type ServerStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'crashed';
 export type UserRole = 'admin' | 'moderator' | 'viewer';
 
@@ -258,4 +260,219 @@ export interface JavaInstallation {
   majorVersion: number;
   isJdk: boolean;
   arch: string;
+}
+
+// ─── Subscription / License Types ──────────────────────────
+export interface FeatureFlags {
+  basicServerManagement: boolean;
+  console: boolean;
+  basicFileManager: boolean;
+  basicPlayerManagement: boolean;
+  analytics: boolean;
+  jvmTuner: boolean;
+  crashAnalyzer: boolean;
+  marketplace: boolean;
+  sftpAccess: boolean;
+  discordBridge: boolean;
+  scheduledTasks: boolean;
+  templates: boolean;
+  logSearch: boolean;
+  apiKeys: boolean;
+  subuserPermissions: boolean;
+  worldManagement: boolean;
+  performanceMonitor: boolean;
+  multiServer: boolean;
+  advancedBackups: boolean;
+  customJvmFlags: boolean;
+  pluginManagement: boolean;
+  metricsHistory: boolean;
+  backupRetention: boolean;
+  backupDownload: boolean;
+  modpackInstaller: boolean;
+  networkProxy: boolean;
+  autoScaling: boolean;
+  consoleHistory: boolean;
+  configValidator: boolean;
+  startupHooks: boolean;
+  playerGeoip: boolean;
+  motdEditor: boolean;
+  datapackManager: boolean;
+  exportReports: boolean;
+  prioritySupport: boolean;
+
+  // Expanded Tools
+  resourceCalculator: boolean;
+  serverBenchmark: boolean;
+  configOptimizer: boolean;
+  bulkServerActions: boolean;
+  serverMigration: boolean;
+
+  // Expanded Logs & Crashes
+  logStreaming: boolean;
+  logAlerts: boolean;
+  crashAutoFix: boolean;
+  logRotation: boolean;
+  logExport: boolean;
+
+  // Expanded Templates
+  templateSharing: boolean;
+  templateVersioning: boolean;
+  templateScheduling: boolean;
+  templateVariables: boolean;
+
+  // Expanded Analytics
+  chatAnalytics: boolean;
+  tpsPrediction: boolean;
+  serverComparison: boolean;
+  customDashboards: boolean;
+  uptimeMonitoring: boolean;
+
+  // Expanded Worlds
+  worldBorder: boolean;
+  worldImportExport: boolean;
+  worldCloning: boolean;
+  worldPregen: boolean;
+  biomeFinder: boolean;
+
+  // Expanded Performance
+  memoryLeakDetection: boolean;
+  gcAnalysis: boolean;
+  tpsOptimizer: boolean;
+  autoRestartLowTps: boolean;
+  resourceForecasting: boolean;
+}
+
+export interface TierLimits {
+  maxServers: number;
+  maxRamMb: number;
+  maxPlayers: number;
+  maxBackups: number;
+  maxPlugins: number;
+  metricsRetentionHours: number;
+  allowedServerTypes: string[];
+  features: FeatureFlags;
+}
+
+export interface SubscriptionStatus {
+  tier: 'free' | 'premium';
+  status: string;
+  licenseKey: string | null;
+  maskedKey: string | null;
+  expiresAt: string | null;
+  hardwareId: string;
+  limits: TierLimits;
+  features: FeatureFlags;
+  stripeCustomerId: string | null;
+}
+
+export interface FeatureComparisonItem {
+  category: string;
+  feature: string;
+  free: boolean | string;
+  premium: boolean | string;
+  icon: string;
+}
+
+export interface PricingPlan {
+  price: number;
+  currency: string;
+  stripePriceId: string;
+  savings?: string;
+  badge?: string;
+}
+
+export interface TierInfo {
+  id: string;
+  name: string;
+  price: number;
+  priceYearly: number;
+  description: string;
+  limits: TierLimits;
+  highlights: string[];
+}
+
+export interface TiersResponse {
+  tiers: TierInfo[];
+  featureComparison: FeatureComparisonItem[];
+  pricing: {
+    monthly: PricingPlan;
+    yearly: PricingPlan;
+    lifetime: PricingPlan;
+  };
+}
+
+export interface PremiumGateError {
+  error: string;
+  code: 'PREMIUM_REQUIRED' | 'SERVER_LIMIT' | 'RAM_LIMIT' | 'SERVER_TYPE_RESTRICTED';
+  feature?: string;
+  currentTier: string;
+  requiredTier: string;
+  message: string;
+  upgradeUrl: string;
+}
+
+// ─── Network / Proxy Types ────────────────────────────────
+export interface NetworkServer {
+  id: number;
+  networkId: string;
+  serverId: string;
+  serverAlias: string;
+  isDefault: boolean;
+  isFallback: boolean;
+  restricted: boolean;
+  priority: number;
+  createdAt: string;
+  // Enriched fields
+  serverName: string;
+  serverStatus: string;
+  serverPort: number;
+  playerCount?: number;
+}
+
+export interface ServerNetwork {
+  id: string;
+  name: string;
+  description: string;
+  proxyType: ProxyType;
+  proxyServerId: string | null;
+  proxyPort: number;
+  motd: string;
+  maxPlayers: number;
+  onlineMode: boolean;
+  ipForwarding: boolean;
+  status: NetworkStatus;
+  autoStart: boolean;
+  createdAt: string;
+  updatedAt: string;
+  // Enriched
+  servers: NetworkServer[];
+  proxyServerName?: string;
+  proxyServerStatus?: string;
+}
+
+export interface ProxyConfig {
+  proxyType: ProxyType;
+  listeners: Array<{
+    host: string;
+    port: number;
+    motd: string;
+    maxPlayers: number;
+    onlineMode: boolean;
+  }>;
+  servers: Record<string, {
+    address: string;
+    restricted: boolean;
+    motd: string;
+  }>;
+  ipForwarding: boolean;
+  defaultServer: string;
+  fallbackServer: string;
+}
+
+export interface AvailableServer {
+  id: string;
+  name: string;
+  type: string;
+  port: number;
+  status: string;
 }

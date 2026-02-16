@@ -4,6 +4,7 @@ import { getDb } from '../db';
 import { userPermissions, users } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 import { createChildLogger } from '../utils/logger';
+import { requireFeature } from '../auth/feature-gate';
 
 const log = createChildLogger('permissions');
 
@@ -83,7 +84,7 @@ export function registerPermissionRoutes(app: FastifyInstance): void {
   // Get all available permission definitions
   app.get(
     '/api/permissions/definitions',
-    { preHandler: [authMiddleware, requireRole('admin')] },
+    { preHandler: [authMiddleware, requireRole('admin'), requireFeature('subuserPermissions')] },
     async () => {
       return PERMISSION_DEFINITIONS;
     }
@@ -92,7 +93,7 @@ export function registerPermissionRoutes(app: FastifyInstance): void {
   // Get permissions for a specific user
   app.get(
     '/api/users/:userId/permissions',
-    { preHandler: [authMiddleware, requireRole('admin')] },
+    { preHandler: [authMiddleware, requireRole('admin'), requireFeature('subuserPermissions')] },
     async (request, reply) => {
       const { userId } = request.params as { userId: string };
       const db = getDb();
@@ -109,7 +110,7 @@ export function registerPermissionRoutes(app: FastifyInstance): void {
   // Set permissions for a user (replaces all permissions)
   app.put(
     '/api/users/:userId/permissions',
-    { preHandler: [authMiddleware, requireRole('admin')] },
+    { preHandler: [authMiddleware, requireRole('admin'), requireFeature('subuserPermissions')] },
     async (request, reply) => {
       const { userId } = request.params as { userId: string };
       const body = request.body as {

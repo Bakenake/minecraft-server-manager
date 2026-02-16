@@ -52,6 +52,7 @@ backups/
 
 # Package output
 releases/
+release/
 *.exe
 *.dmg
 *.AppImage

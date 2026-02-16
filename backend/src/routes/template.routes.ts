@@ -9,6 +9,7 @@ import path from 'path';
 import fs from 'fs';
 import { createChildLogger } from '../utils/logger';
 import { audit } from '../services/audit.service';
+import { requireFeature } from '../auth/feature-gate';
 
 const log = createChildLogger('template-routes');
 
@@ -78,6 +79,8 @@ function deleteTemplateFile(id: string): boolean {
 
 export async function templateRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
+  // All template routes require premium
+  app.addHook('preHandler', requireFeature('templates'));
 
   // ─── List templates ───────────────────────────────────────
   app.get('/api/templates', async () => {

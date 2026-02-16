@@ -221,7 +221,98 @@ function runMigrations(sqlite: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_user_permissions_user ON user_permissions(user_id);
     CREATE INDEX IF NOT EXISTS idx_user_permissions_server ON user_permissions(server_id);
+
+    CREATE TABLE IF NOT EXISTS licenses (
+      id TEXT PRIMARY KEY,
+      license_key TEXT NOT NULL UNIQUE,
+      tier TEXT NOT NULL DEFAULT 'free' CHECK(tier IN ('free', 'premium')),
+      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'expired', 'revoked', 'suspended')),
+      email TEXT NOT NULL,
+      hardware_id TEXT,
+      activated_at INTEGER,
+      expires_at INTEGER,
+      max_servers INTEGER NOT NULL DEFAULT 1,
+      max_ram_mb INTEGER NOT NULL DEFAULT 4096,
+      max_players INTEGER NOT NULL DEFAULT 10,
+      features TEXT NOT NULL DEFAULT '{}',
+      stripe_customer_id TEXT,
+      stripe_subscription_id TEXT,
+      last_validated_at INTEGER,
+      validation_failures INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS license_activations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      license_id TEXT NOT NULL REFERENCES licenses(id) ON DELETE CASCADE,
+      hardware_id TEXT NOT NULL,
+      hostname TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      activated_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_license_key ON licenses(license_key);
+    CREATE INDEX IF NOT EXISTS idx_license_activations ON license_activations(license_id);
   `);
+
+  // Stripe column migrations for existing databases
+  try {
+    const cols = sqlite.pragma('table_info(licenses)') as Array<{ name: string }>;
+    const colNames = cols.map(c => c.name);
+    if (!colNames.includes('stripe_customer_id')) {
+      sqlite.exec(`ALTER TABLE licenses ADD COLUMN stripe_customer_id TEXT`);
+      log.info('Added stripe_customer_id column to licenses table');
+    }
+    if (!colNames.includes('stripe_subscription_id')) {
+      sqlite.exec(`ALTER TABLE licenses ADD COLUMN stripe_subscription_id TEXT`);
+      log.info('Added stripe_subscription_id column to licenses table');
+    }
+  } catch (err) {
+    log.warn({ err }, 'Stripe column migration check failed');
+  }
+
+  // Server Networks / Proxy management migration
+  try {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS server_networks (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        proxy_type TEXT NOT NULL CHECK(proxy_type IN ('bungeecord', 'waterfall', 'velocity')),
+        proxy_server_id TEXT REFERENCES servers(id) ON DELETE SET NULL,
+        proxy_port INTEGER NOT NULL DEFAULT 25577,
+        motd TEXT DEFAULT 'A CraftOS Network',
+        max_players INTEGER NOT NULL DEFAULT 100,
+        online_mode INTEGER NOT NULL DEFAULT 1,
+        ip_forwarding INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'stopped' CHECK(status IN ('stopped', 'starting', 'running', 'stopping', 'degraded')),
+        auto_start INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS network_servers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        network_id TEXT NOT NULL REFERENCES server_networks(id) ON DELETE CASCADE,
+        server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+        server_alias TEXT NOT NULL,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        is_fallback INTEGER NOT NULL DEFAULT 0,
+        restricted INTEGER NOT NULL DEFAULT 0,
+        priority INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_network_servers_network ON network_servers(network_id);
+      CREATE INDEX IF NOT EXISTS idx_network_servers_server ON network_servers(server_id);
+    `);
+    log.info('Server networks tables initialized');
+  } catch (err) {
+    log.warn({ err }, 'Server networks migration check failed');
+  }
 
   log.info('Migrations completed');
 }

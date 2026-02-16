@@ -20,6 +20,7 @@ import {
   LineChart, Line, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
+import { DashboardAd } from '../components/AdBanner';
 
 // Metric card component
 function MetricCard({
@@ -286,6 +287,9 @@ export default function Dashboard() {
           progress={systemMetrics?.memory.usagePercent}
         />
       </div>
+
+      {/* Ad banner for free-tier users */}
+      <DashboardAd />
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

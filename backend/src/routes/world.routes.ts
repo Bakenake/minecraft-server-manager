@@ -4,6 +4,7 @@ import { ServerManager } from '../services/server-manager';
 import { WorldService } from '../services/world.service';
 import { createChildLogger } from '../utils/logger';
 import { audit } from '../services/audit.service';
+import { requireFeature } from '../auth/feature-gate';
 import path from 'path';
 
 const log = createChildLogger('world-routes');
@@ -36,7 +37,7 @@ export async function worldRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── Update world settings ────────────────────────────────
   app.put('/api/servers/:id/worlds/settings', {
-    preHandler: requireRole('admin', 'moderator'),
+    preHandler: [requireRole('admin', 'moderator'), requireFeature('worldManagement')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const server = await manager.getServer(id);
@@ -64,7 +65,7 @@ export async function worldRoutes(app: FastifyInstance): Promise<void> {
 
   // ─── Reset a specific world ───────────────────────────────
   app.post('/api/servers/:id/worlds/reset', {
-    preHandler: requireRole('admin'),
+    preHandler: [requireRole('admin'), requireFeature('worldManagement')],
   }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { worldDir } = request.body as { worldDir: string };

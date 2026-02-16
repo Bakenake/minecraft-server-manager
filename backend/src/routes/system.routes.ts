@@ -8,6 +8,7 @@ import { getDb } from '../db';
 import { feedback, settings, auditLog } from '../db/schema';
 import { config } from '../config';
 import { NotificationService } from '../services/notification.service';
+import { requireFeature } from '../auth/feature-gate';
 
 export async function systemRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
@@ -28,14 +29,14 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ─── Scheduled tasks ────────────────────────────────────
-  app.get('/api/servers/:id/schedule', async (request) => {
+  app.get('/api/servers/:id/schedule', { preHandler: requireFeature('scheduledTasks') }, async (request) => {
     const { id } = request.params as { id: string };
     return schedulerService.getTasksForServer(id);
   });
 
   app.post(
     '/api/servers/:id/schedule',
-    { preHandler: requireRole('admin', 'moderator') },
+    { preHandler: [requireRole('admin', 'moderator'), requireFeature('scheduledTasks')] },
     async (request, reply) => {
       const { id } = request.params as { id: string };
       const schema = z.object({
@@ -55,7 +56,7 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete(
     '/api/schedule/:taskId',
-    { preHandler: requireRole('admin') },
+    { preHandler: [requireRole('admin'), requireFeature('scheduledTasks')] },
     async (request) => {
       const { taskId } = request.params as { taskId: string };
       await schedulerService.deleteTask(taskId);
@@ -65,7 +66,7 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
 
   app.patch(
     '/api/schedule/:taskId/toggle',
-    { preHandler: requireRole('admin', 'moderator') },
+    { preHandler: [requireRole('admin', 'moderator'), requireFeature('scheduledTasks')] },
     async (request, reply) => {
       const { taskId } = request.params as { taskId: string };
       const schema = z.object({ enabled: z.boolean() });
@@ -80,7 +81,7 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
   // ─── Edit Task ───────────────────────────────────────────
   app.put(
     '/api/schedule/:taskId',
-    { preHandler: requireRole('admin', 'moderator') },
+    { preHandler: [requireRole('admin', 'moderator'), requireFeature('scheduledTasks')] },
     async (request, reply) => {
       const { taskId } = request.params as { taskId: string };
       const schema = z.object({
@@ -100,7 +101,7 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
   // ─── Run Task Now ────────────────────────────────────────
   app.post(
     '/api/schedule/:taskId/run',
-    { preHandler: requireRole('admin', 'moderator') },
+    { preHandler: [requireRole('admin', 'moderator'), requireFeature('scheduledTasks')] },
     async (request, reply) => {
       const { taskId } = request.params as { taskId: string };
       try {
@@ -218,7 +219,7 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
   // ─── Discord webhook ────────────────────────────────────
   app.get(
     '/api/system/discord-webhook',
-    { preHandler: requireRole('admin') },
+    { preHandler: [requireRole('admin'), requireFeature('discordBridge')] },
     async () => {
       const ns = NotificationService.getInstance();
       return { enabled: ns.enabled };
@@ -227,7 +228,7 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
 
   app.put(
     '/api/system/discord-webhook',
-    { preHandler: requireRole('admin') },
+    { preHandler: [requireRole('admin'), requireFeature('discordBridge')] },
     async (request, reply) => {
       const schema = z.object({ url: z.string() });
       const parsed = schema.safeParse(request.body);
@@ -251,7 +252,7 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
 
   app.post(
     '/api/system/discord-webhook/test',
-    { preHandler: requireRole('admin') },
+    { preHandler: [requireRole('admin'), requireFeature('discordBridge')] },
     async (request, reply) => {
       const ns = NotificationService.getInstance();
       if (!ns.enabled) return reply.status(400).send({ error: 'Discord webhook URL not configured' });
@@ -280,7 +281,7 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
   // ─── SFTP Settings ───────────────────────────────────────
   app.get(
     '/api/system/sftp',
-    { preHandler: requireRole('admin') },
+    { preHandler: [requireRole('admin'), requireFeature('sftpAccess')] },
     async () => {
       const db = getDb();
       const allSettings = await db.select().from(settings);
@@ -299,7 +300,7 @@ export async function systemRoutes(app: FastifyInstance): Promise<void> {
 
   app.put(
     '/api/system/sftp',
-    { preHandler: requireRole('admin') },
+    { preHandler: [requireRole('admin'), requireFeature('sftpAccess')] },
     async (request, reply) => {
       const schema = z.object({
         enabled: z.boolean().optional(),

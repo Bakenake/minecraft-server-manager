@@ -9,6 +9,7 @@ import { eq } from 'drizzle-orm';
 import fs from 'fs';
 import path from 'path';
 import { createChildLogger } from '../utils/logger';
+import { requireFeature } from '../auth/feature-gate';
 
 const log = createChildLogger('advanced-routes');
 
@@ -23,17 +24,17 @@ export async function advancedRoutes(app: FastifyInstance): Promise<void> {
   // ═══════════════════════════════════════════════════════════
 
   // ─── List JVM presets ─────────────────────────────────────
-  app.get('/api/jvm/presets', async () => {
+  app.get('/api/jvm/presets', { preHandler: requireFeature('jvmTuner') }, async () => {
     return JVM_PRESETS;
   });
 
   // ─── Get flag explanations ────────────────────────────────
-  app.get('/api/jvm/flags', async () => {
+  app.get('/api/jvm/flags', { preHandler: requireFeature('jvmTuner') }, async () => {
     return JVM_FLAG_EXPLANATIONS;
   });
 
   // ─── Build JVM args ───────────────────────────────────────
-  app.post('/api/jvm/build', async (request) => {
+  app.post('/api/jvm/build', { preHandler: requireFeature('customJvmFlags') }, async (request) => {
     const { minRam, maxRam, presetId, customFlags } = request.body as {
       minRam: number;
       maxRam: number;
@@ -51,7 +52,7 @@ export async function advancedRoutes(app: FastifyInstance): Promise<void> {
   // ═══════════════════════════════════════════════════════════
 
   // ─── List crash reports for a server ──────────────────────
-  app.get('/api/servers/:id/crashes', async (request, reply) => {
+  app.get('/api/servers/:id/crashes', { preHandler: requireFeature('crashAnalyzer') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const server = await manager.getServer(id);
     if (!server) return reply.status(404).send({ error: 'Server not found' });
@@ -61,7 +62,7 @@ export async function advancedRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ─── Analyze a specific crash report ──────────────────────
-  app.get('/api/servers/:id/crashes/:filename', async (request, reply) => {
+  app.get('/api/servers/:id/crashes/:filename', { preHandler: requireFeature('crashAnalyzer') }, async (request, reply) => {
     const { id, filename } = request.params as { id: string; filename: string };
     const server = await manager.getServer(id);
     if (!server) return reply.status(404).send({ error: 'Server not found' });
@@ -73,13 +74,13 @@ export async function advancedRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ─── Analyze pasted crash content ─────────────────────────
-  app.post('/api/crashes/analyze', async (request) => {
+  app.post('/api/crashes/analyze', { preHandler: requireFeature('crashAnalyzer') }, async (request) => {
     const { content } = request.body as { content: string };
     return crashAnalyzer.analyze(content);
   });
 
   // ─── Analyze latest.log for issues ────────────────────────
-  app.get('/api/servers/:id/log-analysis', async (request, reply) => {
+  app.get('/api/servers/:id/log-analysis', { preHandler: requireFeature('crashAnalyzer') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const server = await manager.getServer(id);
     if (!server) return reply.status(404).send({ error: 'Server not found' });
@@ -92,7 +93,7 @@ export async function advancedRoutes(app: FastifyInstance): Promise<void> {
   // ═══════════════════════════════════════════════════════════
 
   // ─── Search through server logs ───────────────────────────
-  app.get('/api/servers/:id/logs/search', async (request, reply) => {
+  app.get('/api/servers/:id/logs/search', { preHandler: requireFeature('logSearch') }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const { query, file, limit } = request.query as {
       query?: string;
@@ -186,7 +187,7 @@ export async function advancedRoutes(app: FastifyInstance): Promise<void> {
   // ═══════════════════════════════════════════════════════════
 
   // ─── Player activity heatmap ──────────────────────────────
-  app.get('/api/analytics/activity', async (request) => {
+  app.get('/api/analytics/activity', { preHandler: requireFeature('analytics') }, async (request) => {
     const { serverId, days } = request.query as { serverId?: string; days?: string };
     const lookbackDays = parseInt(days || '30');
     const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
@@ -230,7 +231,7 @@ export async function advancedRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ─── Server uptime statistics ─────────────────────────────
-  app.get('/api/analytics/uptime', async (request) => {
+  app.get('/api/analytics/uptime', { preHandler: requireFeature('analytics') }, async (request) => {
     const { serverId, days } = request.query as { serverId?: string; days?: string };
     const lookbackDays = parseInt(days || '30');
     const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
@@ -292,7 +293,7 @@ export async function advancedRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ─── Player retention ─────────────────────────────────────
-  app.get('/api/analytics/retention', async () => {
+  app.get('/api/analytics/retention', { preHandler: requireFeature('analytics') }, async () => {
     const db = getDb();
     const { players } = await import('../db/schema');
 

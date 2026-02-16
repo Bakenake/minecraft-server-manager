@@ -4,12 +4,10 @@
  * Builds both backend and frontend for production.
  */
 
-import { execSync } from 'child_process';
-import { rmSync, mkdirSync, cpSync, existsSync } from 'fs';
-import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+const { execSync } = require('child_process');
+const { rmSync, mkdirSync, cpSync, existsSync } = require('fs');
+const { resolve } = require('path');
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
 function run(cmd, cwd = ROOT) {

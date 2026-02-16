@@ -8,6 +8,7 @@ import { hashPassword, verifyPassword, validatePasswordStrength } from '../auth/
 import { signToken } from '../auth/jwt';
 import { generateTotpSecret, verifyTotp, generateTotpQrCode } from '../auth/totp';
 import { authMiddleware, requireRole } from '../auth/middleware';
+import { requireFeature } from '../auth/feature-gate';
 import { config } from '../config';
 import { createChildLogger } from '../utils/logger';
 import { audit } from '../services/audit.service';
@@ -330,7 +331,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   // ─── API Keys ────────────────────────────────────────────
   app.get(
     '/api/auth/api-keys',
-    { preHandler: [authMiddleware] },
+    { preHandler: [authMiddleware, requireFeature('apiKeys')] },
     async (request) => {
       const db = getDb();
       const keys = await db.select({
@@ -348,7 +349,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   app.post(
     '/api/auth/api-keys',
-    { preHandler: [authMiddleware] },
+    { preHandler: [authMiddleware, requireFeature('apiKeys')] },
     async (request, reply) => {
       const schema = z.object({
         name: z.string().min(1).max(64),
@@ -394,7 +395,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete(
     '/api/auth/api-keys/:keyId',
-    { preHandler: [authMiddleware] },
+    { preHandler: [authMiddleware, requireFeature('apiKeys')] },
     async (request, reply) => {
       const { keyId } = request.params as { keyId: string };
       const db = getDb();

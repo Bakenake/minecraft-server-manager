@@ -28,6 +28,19 @@ api.interceptors.response.use(
         window.location.href = '/login';
       }
     }
+
+    // Handle premium feature gating
+    if (
+      error.response?.status === 403 &&
+      error.response?.data?.code === 'PREMIUM_REQUIRED'
+    ) {
+      const feature = error.response.data.feature || 'this feature';
+      const event = new CustomEvent('premium-required', {
+        detail: { feature, message: error.response.data.message },
+      });
+      window.dispatchEvent(event);
+    }
+
     return Promise.reject(error);
   }
 );

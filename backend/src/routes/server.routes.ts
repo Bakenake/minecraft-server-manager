@@ -8,6 +8,7 @@ import { createChildLogger } from '../utils/logger';
 import path from 'path';
 import { config } from '../config';
 import { audit } from '../services/audit.service';
+import { requireServerSlot, requireRamLimit, requireServerType } from '../auth/feature-gate';
 
 const log = createChildLogger('server-routes');
 
@@ -41,7 +42,7 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
   // ─── Create server ───────────────────────────────────────
   app.post(
     '/api/servers',
-    { preHandler: requireRole('admin', 'moderator') },
+    { preHandler: [requireRole('admin', 'moderator'), requireServerSlot(), requireServerType(), requireRamLimit()] },
     async (request, reply) => {
       const schema = z.object({
         name: z.string().min(1).max(64),
