@@ -13,6 +13,7 @@ let mainWindow = null;
 let tray = null;
 let backendProcess = null;
 let isQuitting = false;
+let backendRestarting = false;
 let updateAvailable = false;
 let updateDownloaded = false;
 let downloadProgress = 0;
@@ -184,10 +185,32 @@ function startBackend() {
       ? path.join(__dirname, '..', 'backend', 'dist', 'index.js')
       : path.join(process.resourcesPath, 'backend', 'dist', 'index.js');
 
+    // Generate a stable JWT secret per installation (stored in userData)
+    const jwtSecretPath = path.join(app.getPath('userData'), 'data', '.jwt-secret');
+    let jwtSecret;
+    try {
+      const dataDir = path.join(app.getPath('userData'), 'data');
+      const fs = require('fs');
+      fs.mkdirSync(dataDir, { recursive: true });
+      if (fs.existsSync(jwtSecretPath)) {
+        jwtSecret = fs.readFileSync(jwtSecretPath, 'utf-8').trim();
+      }
+      if (!jwtSecret || jwtSecret.length < 32) {
+        const crypto = require('crypto');
+        jwtSecret = crypto.randomBytes(48).toString('hex');
+        fs.writeFileSync(jwtSecretPath, jwtSecret, { mode: 0o600 });
+        log.info('Generated new JWT secret for this installation');
+      }
+    } catch (err) {
+      log.warn('Could not persist JWT secret, using ephemeral:', err.message);
+      jwtSecret = require('crypto').randomBytes(48).toString('hex');
+    }
+
     const env = {
       ...process.env,
       PORT: String(BACKEND_PORT),
       NODE_ENV: isDev ? 'development' : 'production',
+      JWT_SECRET: jwtSecret,
       DB_PATH: path.join(app.getPath('userData'), 'data', 'craftos.db'),
       SERVERS_DIR: path.join(app.getPath('userData'), 'servers'),
       BACKUPS_DIR: path.join(app.getPath('userData'), 'backups'),
@@ -228,9 +251,18 @@ function startBackend() {
 
     backendProcess.on('exit', (code) => {
       log.info(`Backend exited with code ${code}`);
-      if (!isQuitting && resolved) {
+      backendProcess = null;
+      if (!isQuitting && !backendRestarting && resolved) {
+        backendRestarting = true;
         log.info('Restarting backend in 3 seconds...');
-        setTimeout(() => startBackend().catch(() => {}), 3000);
+        setTimeout(() => {
+          backendRestarting = false;
+          if (!isQuitting) {
+            startBackend().catch((err) => {
+              log.error('Backend restart failed:', err);
+            });
+          }
+        }, 3000);
       }
     });
 
@@ -241,9 +273,13 @@ function startBackend() {
 function stopBackend() {
   return new Promise((resolve) => {
     if (!backendProcess) { resolve(); return; }
+    isQuitting = true; // Prevent restart loop
     const proc = backendProcess;
     backendProcess = null;
-    const killTimer = setTimeout(() => { try { proc.kill('SIGKILL'); } catch {} resolve(); }, 5000);
+    const killTimer = setTimeout(() => {
+      try { proc.kill('SIGKILL'); } catch {}
+      resolve();
+    }, 5000);
     proc.on('exit', () => { clearTimeout(killTimer); resolve(); });
     try { proc.kill('SIGTERM'); } catch { clearTimeout(killTimer); resolve(); }
   });
@@ -268,11 +304,44 @@ function createWindow() {
     titleBarStyle: 'default',
   });
 
-  // Load the frontend with self-healing retry
+  // Load the frontend with self-healing retry + health check
   const appUrl = isDev ? 'http://localhost:3000' : `http://localhost:${BACKEND_PORT}`;
+  const healthUrl = `http://localhost:${BACKEND_PORT}/api/health`;
 
-  async function loadWithRetry(url, retries = 10, delayMs = 2000) {
+  async function waitForBackendHealth(maxWaitMs = 30000) {
+    const http = require('http');
+    const start = Date.now();
+    while (Date.now() - start < maxWaitMs) {
+      try {
+        await new Promise((resolve, reject) => {
+          const req = http.get(healthUrl, { timeout: 2000 }, (res) => {
+            let body = '';
+            res.on('data', (d) => body += d);
+            res.on('end', () => {
+              if (res.statusCode === 200) resolve(true);
+              else reject(new Error(`Health check returned ${res.statusCode}`));
+            });
+          });
+          req.on('error', reject);
+          req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+        });
+        return true;
+      } catch {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+    return false;
+  }
+
+  async function loadWithRetry(url, retries = 15, delayMs = 2000) {
+    // Wait for backend health first
+    log.info('Waiting for backend health check...');
+    const healthy = await waitForBackendHealth();
+    if (healthy) log.info('Backend is healthy');
+    else log.warn('Backend health check timed out, attempting to load anyway');
+
     for (let attempt = 1; attempt <= retries; attempt++) {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
       try {
         await mainWindow.loadURL(url);
         log.info(`Frontend loaded on attempt ${attempt}`);
@@ -282,8 +351,19 @@ function createWindow() {
         if (attempt < retries) {
           await new Promise(r => setTimeout(r, delayMs));
         } else {
-          // Final fallback — show an error page
-          mainWindow.loadURL(`data:text/html,<html><body style="background:#0a0a0f;color:#fff;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0"><h1>CraftOS</h1><p>The server panel failed to start.</p><p style="color:#888;font-size:14px">${err.message}</p><button onclick="location.reload()" style="margin-top:20px;padding:10px 24px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">Retry</button></body></html>`);
+          // Final fallback — show a styled error page with retry
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<!DOCTYPE html>
+<html><head><title>CraftOS</title></head>
+<body style="background:#0a0a0f;color:#e2e8f0;font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0">
+<div style="text-align:center;max-width:500px;padding:40px">
+<h1 style="font-size:32px;margin-bottom:8px">CraftOS</h1>
+<p style="color:#94a3b8;margin-bottom:24px">The server panel is having trouble starting.</p>
+<p style="color:#64748b;font-size:13px;margin-bottom:32px">${err.message.replace(/["'<>]/g, '')}</p>
+<button onclick="location.href='${url}'" style="padding:12px 32px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:500">Retry</button>
+<p style="color:#475569;font-size:12px;margin-top:16px">If this keeps happening, try restarting the application.</p>
+</div></body></html>`)}`);
+          }
         }
       }
     }
@@ -298,8 +378,12 @@ function createWindow() {
 
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
-      // Quit the app when the user closes the window
       isQuitting = true;
+      // Destroy tray to prevent lingering
+      if (tray) {
+        tray.destroy();
+        tray = null;
+      }
       app.quit();
     }
   });
@@ -434,8 +518,15 @@ if (!gotTheLock) {
     }
   });
 
-  app.on('before-quit', async () => {
-    isQuitting = true;
+  app.on('before-quit', async (event) => {
+    if (!isQuitting) {
+      isQuitting = true;
+    }
+    // Stop backend process and clean up tray
     await stopBackend();
+    if (tray) {
+      tray.destroy();
+      tray = null;
+    }
   });
 }

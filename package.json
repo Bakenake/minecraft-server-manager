@@ -1,6 +1,6 @@
 {
   "name": "craftos-server-manager",
-  "version": "1.0.0-beta.3",
+  "version": "1.0.0-beta.4",
   "description": "Professional Minecraft Server Manager with modern dashboard UI",
   "private": true,
   "main": "electron/main.js",

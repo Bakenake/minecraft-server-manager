@@ -76,7 +76,7 @@ export const config = {
     servers: path.resolve(env.SERVERS_DIR),
     backups: path.resolve(env.BACKUPS_DIR),
     logs: path.resolve(env.LOGS_DIR),
-    data: path.resolve('./data'),
+    data: path.dirname(path.resolve(env.DB_PATH)),
   },
 
   features: {
@@ -111,7 +111,22 @@ export const config = {
     javaPath: env.DEFAULT_JAVA_PATH,
   },
 
-  version: '1.0.0-beta.1',
+  version: (() => {
+    try {
+      const pkgPath = require('path').resolve(__dirname, '..', 'package.json');
+      const pkg = JSON.parse(require('fs').readFileSync(pkgPath, 'utf-8'));
+      return pkg.version || '1.0.0';
+    } catch {
+      // Fallback: try root package.json (Electron production)
+      try {
+        const rootPkg = require('path').resolve(__dirname, '..', '..', 'package.json');
+        const pkg = JSON.parse(require('fs').readFileSync(rootPkg, 'utf-8'));
+        return pkg.version || '1.0.0';
+      } catch {
+        return '1.0.0';
+      }
+    }
+  })(),
 } as const;
 
 export type Config = typeof config;
