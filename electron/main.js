@@ -268,13 +268,29 @@ function createWindow() {
     titleBarStyle: 'default',
   });
 
-  // Load the frontend
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:3000');
-    mainWindow.webContents.openDevTools();
-  } else {
-    mainWindow.loadURL(`http://localhost:${BACKEND_PORT}`);
+  // Load the frontend with self-healing retry
+  const appUrl = isDev ? 'http://localhost:3000' : `http://localhost:${BACKEND_PORT}`;
+
+  async function loadWithRetry(url, retries = 10, delayMs = 2000) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        await mainWindow.loadURL(url);
+        log.info(`Frontend loaded on attempt ${attempt}`);
+        return;
+      } catch (err) {
+        log.warn(`Frontend load attempt ${attempt}/${retries} failed: ${err.message}`);
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, delayMs));
+        } else {
+          // Final fallback — show an error page
+          mainWindow.loadURL(`data:text/html,<html><body style="background:#0a0a0f;color:#fff;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0"><h1>CraftOS</h1><p>The server panel failed to start.</p><p style="color:#888;font-size:14px">${err.message}</p><button onclick="location.reload()" style="margin-top:20px;padding:10px 24px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px">Retry</button></body></html>`);
+        }
+      }
+    }
   }
+
+  loadWithRetry(appUrl);
+  if (isDev) mainWindow.webContents.openDevTools();
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
@@ -282,8 +298,9 @@ function createWindow() {
 
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
-      event.preventDefault();
-      mainWindow.hide();
+      // Quit the app when the user closes the window
+      isQuitting = true;
+      app.quit();
     }
   });
 
@@ -306,6 +323,12 @@ function buildTrayMenu() {
       click: () => {
         if (mainWindow) { mainWindow.show(); mainWindow.focus(); }
         else createWindow();
+      },
+    },
+    {
+      label: 'Minimize to Tray',
+      click: () => {
+        if (mainWindow) mainWindow.hide();
       },
     },
     { type: 'separator' },
@@ -398,7 +421,9 @@ if (!gotTheLock) {
   });
 
   app.on('window-all-closed', () => {
-    // Stay in tray
+    // Quit the app when all windows are closed
+    isQuitting = true;
+    app.quit();
   });
 
   app.on('activate', () => {
