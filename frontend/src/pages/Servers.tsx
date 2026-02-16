@@ -66,7 +66,9 @@ function CreateServerDialog({
 
       api.get('/servers/java').then(({ data }) => {
         setJavaVersions(data.installations || []);
-        if (data.installations?.length > 0) {
+        if (data.recommended && data.recommended !== 'java') {
+          setForm((f) => ({ ...f, javaPath: data.recommended }));
+        } else if (data.installations?.length > 0) {
           setForm((f) => ({ ...f, javaPath: data.installations[0].path }));
         }
       }).catch(() => {});

@@ -166,5 +166,37 @@ export async function buildApp() {
     timestamp: new Date().toISOString(),
   }));
 
+  // ─── Setup Status (no auth — used during first-run setup) ─
+  const { getJavaSetupStatus, downloadAndInstallJava, getBestJavaPath } = await import('./utils/java-installer');
+
+  app.get('/api/setup/status', async () => {
+    const javaStatus = getJavaSetupStatus();
+    return {
+      java: javaStatus,
+      ready: javaStatus.installed,
+      bestJavaPath: getBestJavaPath(),
+    };
+  });
+
+  app.post('/api/setup/install-java', async (_request, reply) => {
+    const status = getJavaSetupStatus();
+    if (status.downloading) {
+      return reply.status(409).send({ error: 'Java download already in progress', progress: status.downloadProgress });
+    }
+
+    try {
+      const javaPath = await downloadAndInstallJava(21);
+      return { success: true, javaPath, message: 'Java 21 JRE installed successfully' };
+    } catch (err: any) {
+      log.error({ error: err.message }, 'Failed to install Java');
+      return reply.status(500).send({ error: `Failed to install Java: ${err.message}` });
+    }
+  });
+
+  app.get('/api/setup/java-progress', async () => {
+    const status = getJavaSetupStatus();
+    return { downloading: status.downloading, progress: status.downloadProgress };
+  });
+
   return app;
 }

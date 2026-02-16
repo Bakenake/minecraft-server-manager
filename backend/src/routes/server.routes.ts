@@ -4,6 +4,7 @@ import { authMiddleware, requireRole } from '../auth/middleware';
 import { ServerManager } from '../services/server-manager';
 import { downloadFile, getVanillaServerUrl, getPaperServerUrl, getMinecraftVersions, getPaperVersions } from '../utils/download';
 import { detectJavaInstallations, getRecommendedJavaVersion } from '../utils/java';
+import { getBestJavaPath } from '../utils/java-installer';
 import { createChildLogger } from '../utils/logger';
 import path from 'path';
 import { config } from '../config';
@@ -366,11 +367,20 @@ export async function serverRoutes(app: FastifyInstance): Promise<void> {
   // ─── Java detection ──────────────────────────────────────
   app.get('/api/servers/java', async () => {
     const installations = await detectJavaInstallations();
-    return { installations };
+    const bestPath = getBestJavaPath();
+    // If bundled java exists but isn't in the detected list, add it
+    if (bestPath && bestPath !== 'java' && !installations.find(i => i.path === bestPath)) {
+      installations.unshift({ path: bestPath, version: '21', majorVersion: 21, isJdk: false, arch: 'x64' });
+    }
+    return { installations, recommended: bestPath };
   });
 
   app.get('/api/java/installations', async () => {
     const installations = await detectJavaInstallations();
+    const bestPath = getBestJavaPath();
+    if (bestPath && bestPath !== 'java' && !installations.find(i => i.path === bestPath)) {
+      installations.unshift({ path: bestPath, version: '21', majorVersion: 21, isJdk: false, arch: 'x64' });
+    }
     return installations;
   });
 
