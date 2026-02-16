@@ -196,6 +196,8 @@ export const licenses = sqliteTable('licenses', {
   stripeCustomerId: text('stripe_customer_id'), // Stripe customer ID for billing
   stripeSubscriptionId: text('stripe_subscription_id'), // Stripe subscription for renewals
   lastValidatedAt: integer('last_validated_at', { mode: 'timestamp' }),
+  lastOnlineValidation: integer('last_online_validation', { mode: 'timestamp' }),
+  consecutiveOfflineStarts: integer('consecutive_offline_starts').notNull().default(0),
   validationFailures: integer('validation_failures').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),

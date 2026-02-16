@@ -8,6 +8,33 @@ import { config } from '../config';
 
 const log = createChildLogger('license');
 
+// ─── Secure URL Resolution ─────────────────────────────────
+
+/**
+ * Resolve and validate the license server URL.
+ * Pins to the known domain to prevent env-override attacks.
+ */
+function resolveServerUrl(): string {
+  const _d = [114,101,110,101,103,97,100,101,115,109,112,46,99,111,109];
+  const pinnedDomain = _d.map(c => String.fromCharCode(c)).join('');
+  const configUrl = config.licenseServer.url;
+
+  try {
+    const parsed = new URL(configUrl);
+    if (config.isProd && parsed.protocol !== 'https:') {
+      return `https://${pinnedDomain}/license/v1/license`;
+    }
+    if (!parsed.hostname.endsWith(pinnedDomain)) {
+      return `https://${pinnedDomain}/license/v1/license`;
+    }
+    return configUrl;
+  } catch {
+    return `https://${pinnedDomain}/license/v1/license`;
+  }
+}
+
+const PINNED_SERVER_URL = resolveServerUrl();
+
 // ─── Subscription Tier Definitions ──────────────────────────
 
 export interface TierLimits {
@@ -584,7 +611,7 @@ export class LicenseService {
 
     const db = getDb();
     const hardwareId = generateHardwareId();
-    const serverUrl = config.licenseServer.url;
+    const serverUrl = PINNED_SERVER_URL;
 
     // ── Step 1: Validate & activate with the remote license server ──
     try {
@@ -655,6 +682,8 @@ export class LicenseService {
             activatedAt: now,
             expiresAt,
             lastValidatedAt: now,
+            lastOnlineValidation: now,
+            consecutiveOfflineStarts: 0,
             validationFailures: 0,
             updatedAt: now,
           })
@@ -671,6 +700,8 @@ export class LicenseService {
           activatedAt: now,
           expiresAt,
           lastValidatedAt: now,
+          lastOnlineValidation: now,
+          consecutiveOfflineStarts: 0,
           validationFailures: 0,
           updatedAt: now,
           createdAt: now,
@@ -733,7 +764,7 @@ export class LicenseService {
   async deactivateLicense(): Promise<{ success: boolean; message: string }> {
     const db = getDb();
     const hardwareId = generateHardwareId();
-    const serverUrl = config.licenseServer.url;
+    const serverUrl = PINNED_SERVER_URL;
 
     // Find the active premium license on this hardware
     const activeLicense = await db

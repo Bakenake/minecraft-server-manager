@@ -41,7 +41,10 @@ const envSchema = z.object({
   HTTPS_CERT: z.string().optional(),
   HTTPS_KEY: z.string().optional(),
 
-  LICENSE_SERVER_URL: z.string().default('https://renegadesmp.com/license/v1/license'),
+  LICENSE_SERVER_URL: z.string().default(
+    // Obfuscated default — reconstructed at runtime to avoid trivial string extraction
+    Buffer.from('aHR0cHM6Ly9yZW5lZ2FkZXNtcC5jb20vbGljZW5zZS92MS9saWNlbnNl', 'base64').toString('utf-8')
+  ),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -7,7 +7,9 @@
  * 3. Runtime integrity checks
  * 4. DB tamper detection
  * 5. Code integrity verification
- * 6. Grace period for offline use
+ * 6. Persistent offline grace period (survives restarts)
+ * 7. URL domain pinning
+ * 8. Env-override protection
  */
 
 import crypto from 'crypto';
@@ -25,11 +27,47 @@ const log = createChildLogger('security');
 
 // ─── Constants ──────────────────────────────────────────────
 
-// Use the centralized config for the license server URL
-const VALIDATION_SERVER_URL = config.licenseServer.url;
 const OFFLINE_GRACE_PERIOD_DAYS = 7;
 const MAX_VALIDATION_FAILURES = 10;
 const INTEGRITY_CHECK_INTERVAL_MS = 300_000; // 5 minutes
+
+// ─── Secure URL Resolution ─────────────────────────────────
+
+/**
+ * Resolve the license server URL with domain pinning.
+ * Even if someone overrides LICENSE_SERVER_URL env var, we validate
+ * that the domain is one of our allowed origins.
+ */
+function resolveServerUrl(): string {
+  // Pinned domain fragments — reconstructed at runtime to avoid static extraction
+  const _p = [0x72, 0x65, 0x6e, 0x65, 0x67, 0x61, 0x64, 0x65, 0x73, 0x6d, 0x70, 0x2e, 0x63, 0x6f, 0x6d];
+  const pinnedDomain = _p.map(c => String.fromCharCode(c)).join('');
+
+  const configUrl = config.licenseServer.url;
+
+  try {
+    const parsed = new URL(configUrl);
+
+    // Must be HTTPS in production
+    if (config.isProd && parsed.protocol !== 'https:') {
+      log.warn('License server URL is not HTTPS — using pinned URL');
+      return `https://${pinnedDomain}/license/v1/license`;
+    }
+
+    // Domain must match pinned domain
+    if (!parsed.hostname.endsWith(pinnedDomain)) {
+      log.warn('License server URL domain mismatch — using pinned URL');
+      return `https://${pinnedDomain}/license/v1/license`;
+    }
+
+    return configUrl;
+  } catch {
+    // Invalid URL — use pinned
+    return `https://${pinnedDomain}/license/v1/license`;
+  }
+}
+
+const VALIDATION_SERVER_URL = resolveServerUrl();
 
 // ─── Obfuscation Helpers ────────────────────────────────────
 
@@ -235,13 +273,100 @@ export class AntiPiracyService {
   private integrityCheckInterval: ReturnType<typeof setInterval> | null = null;
   private baselineChecksum: string | null = null;
   private lastOnlineValidation: Date | null = null;
-  private offlineDays = 0;
+  private tamperDetectedCount = 0;
 
   static getInstance(): AntiPiracyService {
     if (!AntiPiracyService.instance) {
       AntiPiracyService.instance = new AntiPiracyService();
     }
     return AntiPiracyService.instance;
+  }
+
+  // ── Persistent offline tracking ──────────────────────────
+
+  /**
+   * Read the last successful online validation timestamp from the DB.
+   * This survives app restarts — unlike the old in-memory counter.
+   */
+  private async getPersistedOfflineState(): Promise<{
+    lastOnline: Date | null;
+    consecutiveOfflineStarts: number;
+  }> {
+    const db = getDb();
+    const hardwareId = generateHardwareId();
+    const activeLicense = await db
+      .select()
+      .from(licenses)
+      .where(
+        and(
+          eq(licenses.hardwareId, hardwareId),
+          eq(licenses.status, 'active'),
+        ),
+      )
+      .limit(1);
+
+    if (activeLicense.length === 0) {
+      return { lastOnline: null, consecutiveOfflineStarts: 0 };
+    }
+
+    const lic = activeLicense[0];
+    return {
+      lastOnline: (lic as any).lastOnlineValidation
+        ? new Date((lic as any).lastOnlineValidation)
+        : null,
+      consecutiveOfflineStarts: (lic as any).consecutiveOfflineStarts || 0,
+    };
+  }
+
+  /**
+   * Persist a successful online validation to the DB.
+   */
+  private async persistOnlineSuccess(): Promise<void> {
+    const db = getDb();
+    const hardwareId = generateHardwareId();
+    const now = new Date();
+
+    await db
+      .update(licenses)
+      .set({
+        lastOnlineValidation: now,
+        consecutiveOfflineStarts: 0,
+        updatedAt: now,
+      } as any)
+      .where(
+        and(
+          eq(licenses.hardwareId, hardwareId),
+          eq(licenses.status, 'active'),
+        ),
+      );
+
+    this.lastOnlineValidation = now;
+  }
+
+  /**
+   * Increment the consecutive offline starts counter.
+   */
+  private async incrementOfflineStart(): Promise<number> {
+    const db = getDb();
+    const hardwareId = generateHardwareId();
+
+    const current = await this.getPersistedOfflineState();
+    const newCount = current.consecutiveOfflineStarts + 1;
+
+    await db
+      .update(licenses)
+      .set({
+        consecutiveOfflineStarts: newCount,
+        updatedAt: new Date(),
+      } as any)
+      .where(
+        and(
+          eq(licenses.hardwareId, hardwareId),
+          eq(licenses.status, 'active'),
+        ),
+      );
+
+    return newCount;
   }
 
   /**
@@ -256,13 +381,18 @@ export class AntiPiracyService {
     const tampered = await detectDatabaseTampering();
     if (tampered) {
       log.warn('License tampering was detected and corrected');
+      this.tamperDetectedCount++;
     }
+
+    // Restore persisted offline state
+    const offlineState = await this.getPersistedOfflineState();
+    this.lastOnlineValidation = offlineState.lastOnline;
 
     // Start periodic integrity checks
     this.startIntegrityChecks();
 
-    // Perform initial online validation
-    await this.performOnlineValidation();
+    // Perform initial online validation (blocking for premium)
+    await this.performOnlineValidation(true);
   }
 
   /**
@@ -277,18 +407,38 @@ export class AntiPiracyService {
         const currentChecksum = computeSourceChecksum();
         if (this.baselineChecksum && currentChecksum !== this.baselineChecksum) {
           log.warn('Runtime integrity check failed — source files modified');
-          // Don't crash — just log and downgrade to free
+          this.tamperDetectedCount++;
+
           const licenseService = LicenseService.getInstance();
           licenseService.clearCache();
+
+          // On repeated tampering, downgrade to free
+          if (this.tamperDetectedCount >= 3) {
+            log.warn('Repeated tampering detected — suspending license');
+            const db = getDb();
+            const hardwareId = generateHardwareId();
+            await db
+              .update(licenses)
+              .set({ status: 'suspended', updatedAt: new Date() })
+              .where(
+                and(
+                  eq(licenses.hardwareId, hardwareId),
+                  eq(licenses.status, 'active'),
+                ),
+              );
+          }
         }
 
         // Check DB integrity
-        await detectDatabaseTampering();
+        const dbTampered = await detectDatabaseTampering();
+        if (dbTampered) {
+          this.tamperDetectedCount++;
+        }
 
         // Periodic online validation (every hour)
         const hourAgo = new Date(Date.now() - 3600000);
         if (!this.lastOnlineValidation || this.lastOnlineValidation < hourAgo) {
-          await this.performOnlineValidation();
+          await this.performOnlineValidation(false);
         }
       } catch (err) {
         log.error({ err }, 'Integrity check error');
@@ -297,16 +447,16 @@ export class AntiPiracyService {
   }
 
   /**
-   * Perform online license validation
+   * Perform online license validation.
+   * @param isStartup — if true, this is the initial boot check (persists offline start count)
    */
-  private async performOnlineValidation(): Promise<void> {
+  private async performOnlineValidation(isStartup: boolean): Promise<void> {
     const licenseService = LicenseService.getInstance();
     const { licenseKey } = await licenseService.getCurrentTier();
 
     if (!licenseKey) {
       // Free tier — no need to phone home
       this.lastOnlineValidation = new Date();
-      this.offlineDays = 0;
       return;
     }
 
@@ -314,33 +464,62 @@ export class AntiPiracyService {
     const result = await validateWithServer(licenseKey, hardwareId);
 
     if (result === null) {
-      // Offline — check grace period
-      this.offlineDays++;
-      const daysRemaining = OFFLINE_GRACE_PERIOD_DAYS - this.offlineDays;
+      // ── Offline — use persistent grace period ──
+      if (isStartup) {
+        const offlineStarts = await this.incrementOfflineStart();
 
-      if (daysRemaining <= 0) {
-        log.warn('Offline grace period expired — downgrading to free tier');
-        // Downgrade until online validation succeeds
-        const db = getDb();
-        await db
-          .update(licenses)
-          .set({ status: 'suspended', updatedAt: new Date() })
-          .where(
-            and(
-              eq(licenses.licenseKey, licenseKey),
-              eq(licenses.hardwareId, hardwareId),
-            ),
+        // Check persisted last-online timestamp
+        const offlineState = await this.getPersistedOfflineState();
+        const lastOnline = offlineState.lastOnline;
+
+        if (lastOnline) {
+          const daysSinceOnline = Math.floor(
+            (Date.now() - lastOnline.getTime()) / (1000 * 60 * 60 * 24),
           );
-        licenseService.clearCache();
+          const daysRemaining = OFFLINE_GRACE_PERIOD_DAYS - daysSinceOnline;
+
+          if (daysRemaining <= 0) {
+            log.warn('Offline grace period expired — suspending premium license');
+            const db = getDb();
+            await db
+              .update(licenses)
+              .set({ status: 'suspended', updatedAt: new Date() })
+              .where(
+                and(
+                  eq(licenses.licenseKey, licenseKey),
+                  eq(licenses.hardwareId, hardwareId),
+                ),
+              );
+            licenseService.clearCache();
+            return;
+          }
+
+          log.info({ daysRemaining, offlineStarts }, 'Operating in offline mode (persistent)');
+        } else {
+          // Never validated online — allow a few starts to handle first-install scenarios
+          if (offlineStarts > 3) {
+            log.warn('License never validated online after multiple starts — suspending');
+            const db = getDb();
+            await db
+              .update(licenses)
+              .set({ status: 'suspended', updatedAt: new Date() })
+              .where(
+                and(
+                  eq(licenses.licenseKey, licenseKey),
+                  eq(licenses.hardwareId, hardwareId),
+                ),
+              );
+            licenseService.clearCache();
+          }
+        }
       } else {
-        log.info({ daysRemaining }, 'Operating in offline mode');
+        log.debug('Periodic online validation failed — server unreachable');
       }
       return;
     }
 
-    // Online validation successful
-    this.lastOnlineValidation = new Date();
-    this.offlineDays = 0;
+    // ── Online validation successful ──
+    await this.persistOnlineSuccess();
 
     if (result.revoked) {
       log.warn('License revoked by server');

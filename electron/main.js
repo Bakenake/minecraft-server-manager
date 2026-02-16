@@ -234,7 +234,7 @@ function startBackend() {
       BACKUPS_DIR: path.join(app.getPath('userData'), 'backups'),
       LOGS_DIR: path.join(app.getPath('userData'), 'logs'),
       APP_URL: `http://localhost:${BACKEND_PORT}`,
-      LICENSE_SERVER_URL: 'https://renegadesmp.com/license/v1/license',
+      LICENSE_SERVER_URL: [104,116,116,112,115,58,47,47,114,101,110,101,103,97,100,101,115,109,112,46,99,111,109,47,108,105,99,101,110,115,101,47,118,49,47,108,105,99,101,110,115,101].map(c => String.fromCharCode(c)).join(''),
       // In production, tell Electron binary to act as Node.js
       ...(isDev ? {} : { ELECTRON_RUN_AS_NODE: '1' }),
     };
