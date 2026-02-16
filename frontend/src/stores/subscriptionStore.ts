@@ -68,7 +68,10 @@ export const useSubscriptionStore = create<SubscriptionState>()(
         set({ loading: true, error: null });
         try {
           const { data } = await api.post('/subscription/activate', { licenseKey: key });
+          // Force fresh status fetch — clear any stale cached state first
+          set({ status: null });
           await get().fetchStatus();
+          set({ loading: false });
           return { success: true, message: data.message };
         } catch (err: any) {
           const message = err.response?.data?.error || 'Activation failed';

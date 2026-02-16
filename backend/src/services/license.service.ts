@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import os from 'os';
 import { getDb } from '../db';
 import { licenses, licenseActivations } from '../db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { createChildLogger } from '../utils/logger';
 import { config } from '../config';
 
@@ -453,7 +453,7 @@ export class LicenseService {
     }
 
     const db = getDb();
-    const activeLicense = await db
+    const activeLicenses = await db
       .select()
       .from(licenses)
       .where(
@@ -462,9 +462,9 @@ export class LicenseService {
           eq(licenses.hardwareId, generateHardwareId()),
         ),
       )
-      .limit(1);
+      .orderBy(desc(licenses.tier)); // 'premium' sorts before 'free'
 
-    if (activeLicense.length === 0) {
+    if (activeLicenses.length === 0) {
       this.cachedLicense = {
         tier: 'free',
         limits: FREE_TIER,
@@ -476,7 +476,8 @@ export class LicenseService {
       return { ...this.cachedLicense, status: 'free' };
     }
 
-    const license = activeLicense[0];
+    // Prefer premium license over free when multiple exist
+    const license = activeLicenses.find(l => l.tier === 'premium') || activeLicenses[0];
 
     // Check expiration
     if (license.expiresAt && new Date(license.expiresAt) < new Date()) {
@@ -583,95 +584,147 @@ export class LicenseService {
 
     const db = getDb();
     const hardwareId = generateHardwareId();
+    const serverUrl = config.licenseServer.url;
 
-    // Look up the license
-    const existing = await db
-      .select()
-      .from(licenses)
-      .where(eq(licenses.licenseKey, licenseKey))
-      .limit(1);
+    // ── Step 1: Validate & activate with the remote license server ──
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
 
-    if (existing.length === 0) {
-      return { success: false, message: 'License key not found. Please check your key and try again.' };
-    }
+      const response = await fetch(`${serverUrl}/activate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'CraftOS-ServerManager/1.0',
+        },
+        body: JSON.stringify({
+          licenseKey,
+          hardwareId,
+          hostname: os.hostname(),
+          platform: `${os.platform()} ${os.arch()}`,
+          appVersion: '1.0.0',
+        }),
+        signal: controller.signal,
+      });
 
-    const license = existing[0];
+      clearTimeout(timeout);
 
-    // Check status
-    if (license.status === 'revoked') {
-      return { success: false, message: 'This license has been revoked. Contact support.' };
-    }
+      const result = await response.json() as {
+        success: boolean;
+        message: string;
+        tier?: string;
+        expiresAt?: string | null;
+      };
 
-    if (license.status === 'suspended') {
-      return { success: false, message: 'This license is suspended. Contact support.' };
-    }
+      if (!result.success) {
+        log.warn({ licenseKey, message: result.message }, 'Remote activation rejected');
+        return { success: false, message: result.message };
+      }
 
-    // Check expiration
-    if (license.expiresAt && new Date(license.expiresAt) < new Date()) {
+      // ── Step 2: Server accepted — store locally ──
+      const tier = (result.tier || 'premium') as 'free' | 'premium';
+      const expiresAt = result.expiresAt ? new Date(result.expiresAt) : null;
+      const now = new Date();
+
+      // Deactivate any existing licenses for this hardware (e.g., the auto-created free license)
       await db
         .update(licenses)
-        .set({ status: 'expired', updatedAt: new Date() })
-        .where(eq(licenses.id, license.id));
-      return { success: false, message: 'This license has expired. Please renew your subscription.' };
-    }
-
-    // Check if already activated on different hardware
-    if (license.hardwareId && license.hardwareId !== hardwareId) {
-      // Check if they have an active activation on another machine
-      const activeActivations = await db
-        .select()
-        .from(licenseActivations)
+        .set({ status: 'expired', updatedAt: now })
         .where(
           and(
-            eq(licenseActivations.licenseId, license.id),
-            eq(licenseActivations.isActive, true),
+            eq(licenses.hardwareId, hardwareId),
+            eq(licenses.status, 'active'),
           ),
         );
 
-      if (activeActivations.length > 0) {
-        return {
-          success: false,
-          message: 'This license is already activated on another machine. Deactivate it first or contact support.',
-        };
+      // Check if this key already exists locally
+      const existingLocal = await db
+        .select()
+        .from(licenses)
+        .where(eq(licenses.licenseKey, licenseKey))
+        .limit(1);
+
+      if (existingLocal.length > 0) {
+        // Update existing local record
+        await db
+          .update(licenses)
+          .set({
+            hardwareId,
+            tier,
+            status: 'active',
+            activatedAt: now,
+            expiresAt,
+            lastValidatedAt: now,
+            validationFailures: 0,
+            updatedAt: now,
+          })
+          .where(eq(licenses.id, existingLocal[0].id));
+      } else {
+        // Insert new local record (key was created on the server, not locally)
+        await db.insert(licenses).values({
+          id: crypto.randomUUID(),
+          licenseKey,
+          tier,
+          status: 'active',
+          email: '',
+          hardwareId,
+          activatedAt: now,
+          expiresAt,
+          lastValidatedAt: now,
+          validationFailures: 0,
+          updatedAt: now,
+          createdAt: now,
+        });
       }
+
+      // Record activation locally
+      const localLicense = await db
+        .select()
+        .from(licenses)
+        .where(eq(licenses.licenseKey, licenseKey))
+        .limit(1);
+
+      if (localLicense.length > 0) {
+        // Remove old activation for this hardware + license
+        await db
+          .update(licenseActivations)
+          .set({ isActive: false })
+          .where(
+            and(
+              eq(licenseActivations.licenseId, localLicense[0].id),
+              eq(licenseActivations.hardwareId, hardwareId),
+            ),
+          );
+
+        await db.insert(licenseActivations).values({
+          licenseId: localLicense[0].id,
+          hardwareId,
+          hostname: os.hostname(),
+          platform: `${os.platform()} ${os.arch()}`,
+          activatedAt: now,
+          lastSeenAt: now,
+          isActive: true,
+        });
+      }
+
+      // Clear cache
+      this.cachedLicense = null;
+
+      log.info({ licenseKey, tier, hardwareId }, 'License activated via remote server');
+
+      return {
+        success: true,
+        message: `License activated successfully! Tier: ${tier.toUpperCase()}`,
+        tier,
+        expiresAt,
+      };
+    } catch (err) {
+      log.error({ err, licenseKey }, 'Failed to reach license server for activation');
+      return {
+        success: false,
+        message: 'Unable to reach the license server. Please check your internet connection and try again.',
+      };
     }
-
-    // Bind to this hardware
-    const now = new Date();
-    await db
-      .update(licenses)
-      .set({
-        hardwareId,
-        activatedAt: now,
-        status: 'active',
-        lastValidatedAt: now,
-        validationFailures: 0,
-        updatedAt: now,
-      })
-      .where(eq(licenses.id, license.id));
-
-    // Record activation
-    await db.insert(licenseActivations).values({
-      licenseId: license.id,
-      hardwareId,
-      hostname: os.hostname(),
-      platform: `${os.platform()} ${os.arch()}`,
-      activatedAt: now,
-      lastSeenAt: now,
-      isActive: true,
-    });
-
-    // Clear cache to force re-read
-    this.cachedLicense = null;
-
-    log.info({ licenseKey, tier: license.tier, hardwareId }, 'License activated');
-
-    return {
-      success: true,
-      message: `License activated successfully! Tier: ${license.tier.toUpperCase()}`,
-      tier: license.tier,
-      expiresAt: license.expiresAt,
-    };
   }
 
   /**
@@ -680,7 +733,9 @@ export class LicenseService {
   async deactivateLicense(): Promise<{ success: boolean; message: string }> {
     const db = getDb();
     const hardwareId = generateHardwareId();
+    const serverUrl = config.licenseServer.url;
 
+    // Find the active premium license on this hardware
     const activeLicense = await db
       .select()
       .from(licenses)
@@ -690,14 +745,52 @@ export class LicenseService {
           eq(licenses.hardwareId, hardwareId),
         ),
       )
-      .limit(1);
+      .orderBy(desc(licenses.tier)); // premium first
 
-    if (activeLicense.length === 0) {
+    // Prefer premium license over free
+    const license = activeLicense.find(l => l.tier === 'premium') || activeLicense[0];
+
+    if (!license) {
       return { success: false, message: 'No active license found on this machine.' };
     }
 
-    const license = activeLicense[0];
+    // Skip free-tier licenses — they don't exist on the remote server
+    if (license.tier !== 'free' && license.licenseKey) {
+      // ── Step 1: Deactivate on the remote license server ──
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
 
+        const response = await fetch(`${serverUrl}/deactivate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'CraftOS-ServerManager/1.0',
+          },
+          body: JSON.stringify({
+            licenseKey: license.licenseKey,
+            hardwareId,
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        const result = await response.json() as { success: boolean; message: string };
+
+        if (!result.success && response.status !== 404) {
+          log.warn({ licenseKey: license.licenseKey, message: result.message }, 'Remote deactivation failed');
+          // Continue with local deactivation anyway
+        }
+
+        log.info({ licenseKey: license.licenseKey }, 'License deactivated on remote server');
+      } catch (err) {
+        // Server unreachable — still deactivate locally, the server will clean up on next validation
+        log.warn({ err, licenseKey: license.licenseKey }, 'Could not reach license server for deactivation — proceeding locally');
+      }
+    }
+
+    // ── Step 2: Deactivate locally ──
     // Unbind hardware
     await db
       .update(licenses)
@@ -732,7 +825,7 @@ export class LicenseService {
     const db = getDb();
     const hardwareId = generateHardwareId();
 
-    const activeLicense = await db
+    const activeLicenseResults = await db
       .select()
       .from(licenses)
       .where(
@@ -741,7 +834,12 @@ export class LicenseService {
           eq(licenses.hardwareId, hardwareId),
         ),
       )
-      .limit(1);
+      .orderBy(desc(licenses.tier)); // 'premium' sorts before 'free'
+
+    // Prefer premium license over free
+    const activeLicense = activeLicenseResults.length > 0
+      ? [activeLicenseResults.find(l => l.tier === 'premium') || activeLicenseResults[0]]
+      : [];
 
     if (activeLicense.length === 0) {
       this.cachedLicense = {

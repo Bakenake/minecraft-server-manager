@@ -19,12 +19,14 @@ import { LicenseService, generateHardwareId, FREE_TIER } from '../services/licen
 import { getDb } from '../db';
 import { licenses } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
+import { config } from '../config';
 
 const log = createChildLogger('security');
 
 // ─── Constants ──────────────────────────────────────────────
 
-const VALIDATION_SERVER_URL = process.env.LICENSE_SERVER_URL || 'https://api.craftos.app/v1/license';
+// Use the centralized config for the license server URL
+const VALIDATION_SERVER_URL = config.licenseServer.url;
 const OFFLINE_GRACE_PERIOD_DAYS = 7;
 const MAX_VALIDATION_FAILURES = 10;
 const INTEGRITY_CHECK_INTERVAL_MS = 300_000; // 5 minutes

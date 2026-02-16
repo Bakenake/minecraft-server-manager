@@ -34,14 +34,15 @@
     "db:seed": "npm run db:seed --workspace=backend"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
     "concurrently": "^9.1.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.1.8",
     "wait-on": "^8.0.0"
   },
   "dependencies": {
-    "electron-updater": "^6.3.9",
-    "electron-log": "^5.2.4"
+    "electron-log": "^5.2.4",
+    "electron-updater": "^6.3.9"
   },
   "engines": {
     "node": ">=20.0.0"

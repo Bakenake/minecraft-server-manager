@@ -53,9 +53,17 @@ async function build() {
     cpSync(resolve(ROOT, '.env.example'), resolve(distDir, '.env.example'));
   }
 
-  // Install production dependencies
+  // Install production dependencies in dist/backend
   step('Installing production dependencies...');
+  // Copy lockfile for reproducible installs
+  if (existsSync(resolve(ROOT, 'package-lock.json'))) {
+    cpSync(resolve(ROOT, 'package-lock.json'), resolve(distDir, 'backend', 'package-lock.json'));
+  }
   run('npm install --production --ignore-scripts', resolve(distDir, 'backend'));
+
+  // Rebuild native modules (better-sqlite3) for Electron's Node ABI
+  step('Rebuilding native modules for Electron...');
+  run(`npx @electron/rebuild -f -o better-sqlite3 --module-dir "${resolve(distDir, 'backend')}"`, ROOT);
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
   step(`Build complete in ${elapsed}s`);

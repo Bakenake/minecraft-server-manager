@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-950">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CraftOS License Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50:'#eef2ff',100:'#e0e7ff',200:'#c7d2fe',300:'#a5b4fc',400:'#818cf8',500:'#6366f1',600:'#4f46e5',700:'#4338ca',800:'#3730a3',900:'#312e81' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .fade-in { animation: fadeIn 0.2s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .stat-card { transition: all 0.15s ease; }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.3); }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #111827; }
+    ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+    .toast { animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s; }
+    @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+    @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+    .modal-overlay { animation: fadeInBg 0.2s ease; }
+    @keyframes fadeInBg { from { opacity: 0; } to { opacity: 1; } }
+    .badge { @apply px-2 py-0.5 rounded-full text-xs font-medium; }
+    .btn { @apply px-4 py-2 rounded-lg font-medium text-sm transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900; }
+    .btn-primary { @apply bg-brand-600 hover:bg-brand-500 text-white focus:ring-brand-500; }
+    .btn-danger { @apply bg-red-600 hover:bg-red-500 text-white focus:ring-red-500; }
+    .btn-secondary { @apply bg-gray-700 hover:bg-gray-600 text-gray-200 focus:ring-gray-500; }
+    .btn-success { @apply bg-emerald-600 hover:bg-emerald-500 text-white focus:ring-emerald-500; }
+    .input { @apply w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent placeholder-gray-500; }
+    .select { @apply w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500; }
+    .table-row { @apply border-b border-gray-800 hover:bg-gray-800/50 transition-colors; }
+  </style>
+</head>
+<body class="h-full dark">
+
+<!-- Toast Container -->
+<div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
+
+<!-- Login Screen -->
+<div id="login-screen" class="min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-600/20 mb-4">
+        <svg class="w-8 h-8 text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-white">CraftOS License Admin</h1>
+      <p class="text-gray-400 text-sm mt-1">Sign in to manage license keys</p>
+    </div>
+    <form id="login-form" class="bg-gray-900 rounded-xl border border-gray-800 p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-gray-300 mb-1">Username</label>
+        <input type="text" id="login-username" class="input" placeholder="admin" autocomplete="username" required>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-300 mb-1">Password</label>
+        <input type="password" id="login-password" class="input" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary w-full">Sign In</button>
+      <p id="login-error" class="text-red-400 text-sm text-center hidden"></p>
+    </form>
+  </div>
+</div>
+
+<!-- Main App (hidden until login) -->
+<div id="app-screen" class="hidden min-h-screen flex">
+  <!-- Sidebar -->
+  <aside class="w-56 bg-gray-900 border-r border-gray-800 flex flex-col fixed h-full z-40">
+    <div class="p-4 border-b border-gray-800">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center">
+          <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+          </svg>
+        </div>
+        <div>
+          <span class="text-white font-semibold text-sm">CraftOS</span>
+          <span class="text-gray-500 text-xs block">License Admin</span>
+        </div>
+      </div>
+    </div>
+    <nav class="flex-1 p-3 space-y-1">
+      <button onclick="navigate('dashboard')" data-nav="dashboard" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-800 transition-colors">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+        Dashboard
+      </button>
+      <button onclick="navigate('licenses')" data-nav="licenses" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-800 transition-colors">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+        Licenses
+      </button>
+      <button onclick="navigate('create')" data-nav="create" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-800 transition-colors">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+        Create Keys
+      </button>
+      <button onclick="navigate('activations')" data-nav="activations" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-800 transition-colors">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
+        Activations
+      </button>
+      <button onclick="navigate('logs')" data-nav="logs" class="nav-btn w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-800 transition-colors">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+        Validation Logs
+      </button>
+    </nav>
+    <div class="p-3 border-t border-gray-800">
+      <button onclick="logout()" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-red-400 hover:bg-gray-800 transition-colors">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+        Sign Out
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="flex-1 ml-56 p-6 overflow-y-auto">
+    <!-- Dashboard Page -->
+    <div id="page-dashboard" class="page hidden fade-in">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-xl font-bold text-white">Dashboard</h2>
+          <p class="text-gray-400 text-sm">License system overview</p>
+        </div>
+        <button onclick="loadDashboard()" class="btn btn-secondary text-xs">
+          <svg class="w-3.5 h-3.5 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+          Refresh
+        </button>
+      </div>
+      <!-- Stats Cards -->
+      <div id="stats-cards" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6"></div>
+      <!-- Validation Chart -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+          <h3 class="text-sm font-semibold text-gray-300 mb-4">Validation Results (7 days)</h3>
+          <div id="validation-breakdown"></div>
+        </div>
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+          <h3 class="text-sm font-semibold text-gray-300 mb-4">Recent Activations</h3>
+          <div id="recent-activations" class="space-y-2 max-h-80 overflow-y-auto"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Licenses Page -->
+    <div id="page-licenses" class="page hidden fade-in">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-xl font-bold text-white">License Keys</h2>
+          <p class="text-gray-400 text-sm">Manage all license keys</p>
+        </div>
+        <button onclick="navigate('create')" class="btn btn-primary">
+          <svg class="w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+          Create Key
+        </button>
+      </div>
+      <!-- Filters -->
+      <div class="flex flex-wrap gap-3 mb-4">
+        <input type="text" id="license-search" class="input max-w-xs" placeholder="Search key, email, notes..." oninput="debouncedLoadLicenses()">
+        <select id="license-filter-status" class="select max-w-[150px]" onchange="loadLicenses()">
+          <option value="">All Status</option>
+          <option value="active">Active</option>
+          <option value="revoked">Revoked</option>
+          <option value="expired">Expired</option>
+          <option value="suspended">Suspended</option>
+        </select>
+        <select id="license-filter-tier" class="select max-w-[150px]" onchange="loadLicenses()">
+          <option value="">All Tiers</option>
+          <option value="premium">Premium</option>
+          <option value="free">Free</option>
+        </select>
+      </div>
+      <!-- Table -->
+      <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-800 text-left">
+                <th class="px-4 py-3 text-gray-400 font-medium">License Key</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Tier</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Plan</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Status</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Email</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Activations</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Expires</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="licenses-table"></tbody>
+          </table>
+        </div>
+        <div id="licenses-pagination" class="flex items-center justify-between px-4 py-3 border-t border-gray-800"></div>
+      </div>
+    </div>
+
+    <!-- Create Keys Page -->
+    <div id="page-create" class="page hidden fade-in">
+      <div class="mb-6">
+        <h2 class="text-xl font-bold text-white">Create License Keys</h2>
+        <p class="text-gray-400 text-sm">Generate new license keys for customers</p>
+      </div>
+      <div class="max-w-lg">
+        <form id="create-form" class="bg-gray-900 rounded-xl border border-gray-800 p-6 space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-1">Tier</label>
+              <select id="create-tier" class="select">
+                <option value="premium">Premium</option>
+                <option value="free">Free</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-1">Plan</label>
+              <select id="create-plan" class="select">
+                <option value="lifetime">Lifetime</option>
+                <option value="yearly">Yearly</option>
+                <option value="monthly">Monthly</option>
+                <option value="trial">Trial</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-1">Email <span class="text-gray-500">(optional)</span></label>
+            <input type="email" id="create-email" class="input" placeholder="customer@example.com">
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-1">Max Activations</label>
+              <input type="number" id="create-max-activations" class="input" value="3" min="1" max="100">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-1">Quantity</label>
+              <input type="number" id="create-count" class="input" value="1" min="1" max="100">
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-1">Expires In (days)</label>
+              <input type="number" id="create-expires-days" class="input" placeholder="Leave empty for never" min="1">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-1">Expires In (minutes)</label>
+              <input type="number" id="create-expires-minutes" class="input" placeholder="For short trials" min="1">
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-1">Notes <span class="text-gray-500">(optional)</span></label>
+            <input type="text" id="create-notes" class="input" placeholder="Internal notes about this key...">
+          </div>
+          <button type="submit" class="btn btn-primary w-full">
+            <svg class="w-4 h-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
+            Generate Keys
+          </button>
+        </form>
+        <!-- Created Keys Output -->
+        <div id="created-keys-output" class="hidden mt-4 bg-gray-900 rounded-xl border border-gray-800 p-6">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-semibold text-emerald-400">Keys Generated Successfully</h3>
+            <button onclick="copyAllKeys()" class="btn btn-secondary text-xs">
+              <svg class="w-3.5 h-3.5 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+              Copy All
+            </button>
+          </div>
+          <div id="created-keys-list" class="space-y-2"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activations Page -->
+    <div id="page-activations" class="page hidden fade-in">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-xl font-bold text-white">Activations</h2>
+          <p class="text-gray-400 text-sm">Active hardware bindings</p>
+        </div>
+        <select id="activations-filter" class="select max-w-[150px]" onchange="loadActivations()">
+          <option value="">All</option>
+          <option value="true" selected>Active Only</option>
+          <option value="false">Deactivated</option>
+        </select>
+      </div>
+      <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-800 text-left">
+                <th class="px-4 py-3 text-gray-400 font-medium">License Key</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Email</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Hostname</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Platform</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Version</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">IP</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Last Seen</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Status</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="activations-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Logs Page -->
+    <div id="page-logs" class="page hidden fade-in">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-xl font-bold text-white">Validation Logs</h2>
+          <p class="text-gray-400 text-sm">Every phone-home validation attempt</p>
+        </div>
+        <div class="flex gap-3">
+          <select id="logs-filter-result" class="select max-w-[150px]" onchange="loadLogs()">
+            <option value="">All Results</option>
+            <option value="valid">Valid</option>
+            <option value="not_found">Not Found</option>
+            <option value="revoked">Revoked</option>
+            <option value="suspended">Suspended</option>
+            <option value="expired">Expired</option>
+            <option value="hardware_mismatch">HW Mismatch</option>
+            <option value="max_activations">Max Activations</option>
+          </select>
+          <input type="text" id="logs-filter-key" class="input max-w-[200px]" placeholder="Filter by key..." oninput="debouncedLoadLogs()">
+        </div>
+      </div>
+      <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-800 text-left">
+                <th class="px-4 py-3 text-gray-400 font-medium">Time</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">License Key</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Hardware ID</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">IP Address</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Result</th>
+                <th class="px-4 py-3 text-gray-400 font-medium">Message</th>
+              </tr>
+            </thead>
+            <tbody id="logs-table"></tbody>
+          </table>
+        </div>
+        <div id="logs-pagination" class="flex items-center justify-between px-4 py-3 border-t border-gray-800"></div>
+      </div>
+    </div>
+
+    <!-- License Detail Modal -->
+    <div id="license-modal" class="hidden fixed inset-0 z-50">
+      <div class="modal-overlay absolute inset-0 bg-black/60" onclick="closeLicenseModal()"></div>
+      <div class="relative z-10 flex items-start justify-center pt-12 px-4">
+        <div class="bg-gray-900 rounded-xl border border-gray-800 w-full max-w-2xl max-h-[85vh] overflow-y-auto">
+          <div class="sticky top-0 bg-gray-900 flex items-center justify-between px-6 py-4 border-b border-gray-800">
+            <h3 class="text-lg font-bold text-white">License Details</h3>
+            <button onclick="closeLicenseModal()" class="text-gray-400 hover:text-white">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+          <div id="license-modal-content" class="p-6"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

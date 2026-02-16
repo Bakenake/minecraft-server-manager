@@ -23,7 +23,7 @@
       "filter": ["**/*"]
     },
     {
-      "from": "backend/node_modules",
+      "from": "dist/backend/node_modules",
       "to": "backend/node_modules",
       "filter": ["**/*"]
     }

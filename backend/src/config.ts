@@ -40,6 +40,8 @@ const envSchema = z.object({
   HTTPS_ENABLED: z.coerce.boolean().default(false),
   HTTPS_CERT: z.string().optional(),
   HTTPS_KEY: z.string().optional(),
+
+  LICENSE_SERVER_URL: z.string().default('https://api.craftos.app/v1/license'),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -92,6 +94,10 @@ export const config = {
   sftp: {
     enabled: env.SFTP_ENABLED,
     port: env.SFTP_PORT,
+  },
+
+  licenseServer: {
+    url: env.LICENSE_SERVER_URL,
   },
 
   https: {
