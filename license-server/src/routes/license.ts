@@ -25,10 +25,16 @@ interface ValidateBody {
   arch?: string;
   appVersion?: string;
   timestamp?: number;
+  osVersion?: string;
+  osRelease?: string;
+  totalMemoryGb?: number;
+  cpuModel?: string;
+  cpuCores?: number;
+  username?: string;
 }
 
 router.post('/validate', (req: Request<{}, {}, ValidateBody>, res: Response): void => {
-  const { licenseKey, hardwareId, hostname, platform, appVersion } = req.body;
+  const { licenseKey, hardwareId, hostname, platform, appVersion, osVersion, osRelease, totalMemoryGb, cpuModel, cpuCores, username, arch } = req.body;
 
   if (!licenseKey || !hardwareId) {
     res.status(400).json({ valid: false, message: 'Missing licenseKey or hardwareId' });
@@ -140,19 +146,25 @@ router.post('/validate', (req: Request<{}, {}, ValidateBody>, res: Response): vo
 
     // Auto-activate on this hardware (within limit)
     db.prepare(
-      `INSERT INTO activations (id, license_id, hardware_id, hostname, platform, app_version, ip_address, is_active, activated_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))`
-    ).run(uuid(), license.id, hardwareId, hostname || 'unknown', platform || 'unknown', appVersion || 'unknown', ip);
+      `INSERT INTO activations (id, license_id, hardware_id, hostname, platform, app_version, ip_address, is_active, activated_at, last_seen_at, os_version, os_release, arch, total_memory_gb, cpu_model, cpu_cores, username)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'), ?, ?, ?, ?, ?, ?, ?)`
+    ).run(uuid(), license.id, hardwareId, hostname || 'unknown', platform || 'unknown', appVersion || 'unknown', ip,
+      osVersion || null, osRelease || null, arch || null, totalMemoryGb || null, cpuModel || null, cpuCores || null, username || null);
 
     // Update the license hardware_id to the latest activation
     db.prepare(
       'UPDATE licenses SET hardware_id = ?, updated_at = datetime(?) WHERE id = ?'
     ).run(hardwareId, new Date().toISOString(), license.id);
   } else {
-    // Update last seen
+    // Update last seen + enriched data
     db.prepare(
-      'UPDATE activations SET last_seen_at = datetime(?), app_version = ?, ip_address = ? WHERE id = ?'
-    ).run(new Date().toISOString(), appVersion || activation.app_version, ip, activation.id);
+      `UPDATE activations SET last_seen_at = datetime(?), app_version = COALESCE(?, app_version), ip_address = ?,
+       os_version = COALESCE(?, os_version), os_release = COALESCE(?, os_release), arch = COALESCE(?, arch),
+       total_memory_gb = COALESCE(?, total_memory_gb), cpu_model = COALESCE(?, cpu_model), cpu_cores = COALESCE(?, cpu_cores),
+       username = COALESCE(?, username)
+       WHERE id = ?`
+    ).run(new Date().toISOString(), appVersion || null, ip,
+      osVersion || null, osRelease || null, arch || null, totalMemoryGb || null, cpuModel || null, cpuCores || null, username || null, activation.id);
   }
 
   // Build the full feature set for premium
@@ -180,10 +192,18 @@ interface ActivateBody {
   hostname?: string;
   platform?: string;
   appVersion?: string;
+  osVersion?: string;
+  osRelease?: string;
+  arch?: string;
+  totalMemoryGb?: number;
+  cpuModel?: string;
+  cpuCores?: number;
+  macAddresses?: string;
+  username?: string;
 }
 
 router.post('/activate', (req: Request<{}, {}, ActivateBody>, res: Response): void => {
-  const { licenseKey, hardwareId, hostname, platform, appVersion } = req.body;
+  const { licenseKey, hardwareId, hostname, platform, appVersion, osVersion, osRelease, arch, totalMemoryGb, cpuModel, cpuCores, macAddresses, username } = req.body;
 
   if (!licenseKey || !hardwareId) {
     res.status(400).json({ success: false, message: 'Missing licenseKey or hardwareId' });
@@ -245,13 +265,19 @@ router.post('/activate', (req: Request<{}, {}, ActivateBody>, res: Response): vo
   // Create or reactivate
   if (existing) {
     db.prepare(
-      'UPDATE activations SET is_active = 1, last_seen_at = datetime(?), ip_address = ?, deactivated_at = NULL WHERE id = ?'
-    ).run(new Date().toISOString(), ip, existing.id);
+      `UPDATE activations SET is_active = 1, last_seen_at = datetime(?), ip_address = ?, deactivated_at = NULL,
+       os_version = COALESCE(?, os_version), os_release = COALESCE(?, os_release), arch = COALESCE(?, arch),
+       total_memory_gb = COALESCE(?, total_memory_gb), cpu_model = COALESCE(?, cpu_model), cpu_cores = COALESCE(?, cpu_cores),
+       mac_addresses = COALESCE(?, mac_addresses), username = COALESCE(?, username), app_version = COALESCE(?, app_version)
+       WHERE id = ?`
+    ).run(new Date().toISOString(), ip, osVersion || null, osRelease || null, arch || null,
+      totalMemoryGb || null, cpuModel || null, cpuCores || null, macAddresses || null, username || null, appVersion || null, existing.id);
   } else {
     db.prepare(
-      `INSERT INTO activations (id, license_id, hardware_id, hostname, platform, app_version, ip_address, is_active, activated_at, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))`
-    ).run(uuid(), license.id, hardwareId, hostname || 'unknown', platform || 'unknown', appVersion || 'unknown', ip);
+      `INSERT INTO activations (id, license_id, hardware_id, hostname, platform, app_version, ip_address, is_active, activated_at, last_seen_at, os_version, os_release, arch, total_memory_gb, cpu_model, cpu_cores, mac_addresses, username)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(uuid(), license.id, hardwareId, hostname || 'unknown', platform || 'unknown', appVersion || 'unknown', ip,
+      osVersion || null, osRelease || null, arch || null, totalMemoryGb || null, cpuModel || null, cpuCores || null, macAddresses || null, username || null);
   }
 
   // Update license hardware_id

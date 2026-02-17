@@ -238,6 +238,12 @@ async function validateWithServer(
         arch: os.arch(),
         appVersion: '1.0.0',
         timestamp: Date.now(),
+        osVersion: os.version?.() || 'unknown',
+        osRelease: os.release(),
+        totalMemoryGb: Math.round(os.totalmem() / 1073741824 * 10) / 10,
+        cpuModel: os.cpus()[0]?.model || 'unknown',
+        cpuCores: os.cpus().length,
+        username: os.userInfo().username,
       }),
       signal: controller.signal,
     });

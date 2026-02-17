@@ -22,6 +22,8 @@ import {
   ClipboardDocumentListIcon,
   ShieldExclamationIcon,
   CheckIcon,
+  ArrowPathIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline';
 import { useRole } from '../hooks/useRole';
 
@@ -1439,6 +1441,9 @@ export default function Settings() {
             </div>
           </div>
 
+          {/* ─── Application Update ───── */}
+          <UpdateCard />
+
           <p className="text-center text-dark-600 text-xs">
             CraftOS Server Manager v{__APP_VERSION__} &middot; Built with Fastify + React
           </p>
@@ -1562,6 +1567,163 @@ function SFTPSettingsCard() {
           >
             {saving ? 'Saving...' : 'Save SFTP Settings'}
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Application Update Card Component ────────────────────
+function UpdateCard() {
+  const [status, setStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'up-to-date'>('idle');
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ percent: number; bytesPerSecond?: number; transferred?: number; total?: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    if (!api) return;
+
+    const cleanups: (() => void)[] = [];
+
+    cleanups.push(api.onUpdateChecking(() => {
+      setStatus('checking');
+      setError(null);
+    }));
+
+    cleanups.push(api.onUpdateAvailable((data: any) => {
+      setStatus('available');
+      setUpdateVersion(data?.version || 'unknown');
+    }));
+
+    cleanups.push(api.onUpdateNotAvailable(() => {
+      setStatus('up-to-date');
+    }));
+
+    cleanups.push(api.onUpdateProgress((data: any) => {
+      setStatus('downloading');
+      setProgress(data);
+    }));
+
+    cleanups.push(api.onUpdateDownloaded((data: any) => {
+      setStatus('ready');
+      setUpdateVersion(data?.version || updateVersion);
+    }));
+
+    cleanups.push(api.onUpdateError((data: any) => {
+      setStatus('idle');
+      setError(data?.message || 'Update check failed');
+    }));
+
+    return () => cleanups.forEach((fn) => fn());
+  }, []);
+
+  const handleCheckForUpdates = async () => {
+    const api = (window as any).electronAPI;
+    if (!api) return;
+    setStatus('checking');
+    setError(null);
+    try {
+      await api.checkForUpdates();
+    } catch {
+      setError('Failed to check for updates');
+      setStatus('idle');
+    }
+  };
+
+  const handleInstall = () => {
+    const api = (window as any).electronAPI;
+    if (api) api.installUpdate();
+  };
+
+  const isElectron = !!(window as any).electronAPI;
+
+  return (
+    <div className="card space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-medium text-dark-300">Application Update</h3>
+          <p className="text-xs text-dark-500 mt-1">Check for and install new versions of CraftOS</p>
+        </div>
+        <ArrowDownTrayIcon className="w-5 h-5 text-dark-500" />
+      </div>
+
+      {!isElectron && (
+        <p className="text-xs text-dark-500">Auto-update is only available in the desktop app.</p>
+      )}
+
+      {isElectron && (
+        <div className="space-y-3">
+          {/* Status display */}
+          {status === 'idle' && (
+            <button onClick={handleCheckForUpdates} className="btn-primary flex items-center gap-2">
+              <ArrowPathIcon className="w-4 h-4" />
+              Check for Updates
+            </button>
+          )}
+
+          {status === 'checking' && (
+            <div className="flex items-center gap-2 text-sm text-dark-400">
+              <ArrowPathIcon className="w-4 h-4 animate-spin" />
+              Checking for updates...
+            </div>
+          )}
+
+          {status === 'up-to-date' && (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm text-success-400">
+                <CheckIcon className="w-4 h-4" />
+                You're running the latest version
+              </div>
+              <button onClick={handleCheckForUpdates} className="text-xs text-dark-500 hover:text-dark-300 transition-colors">
+                Check again
+              </button>
+            </div>
+          )}
+
+          {status === 'available' && (
+            <div className="flex items-center gap-2 text-sm text-accent-400">
+              <ArrowDownTrayIcon className="w-4 h-4" />
+              Update v{updateVersion} is downloading...
+            </div>
+          )}
+
+          {status === 'downloading' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-dark-300">Downloading update...</span>
+                <span className="text-dark-400 font-mono">{Math.round(progress?.percent ?? 0)}%</span>
+              </div>
+              <div className="w-full h-2 bg-dark-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-accent-500 rounded-full transition-all duration-300"
+                  style={{ width: `${progress?.percent ?? 0}%` }}
+                />
+              </div>
+              {progress?.bytesPerSecond && (
+                <p className="text-xs text-dark-500">
+                  {(progress.bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s
+                  {progress.total ? ` · ${(progress.transferred! / 1024 / 1024).toFixed(1)} / ${(progress.total / 1024 / 1024).toFixed(1)} MB` : ''}
+                </p>
+              )}
+            </div>
+          )}
+
+          {status === 'ready' && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-success-400">
+                Update v{updateVersion} is ready to install
+              </span>
+              <button onClick={handleInstall} className="btn-primary flex items-center gap-2 text-sm">
+                <ArrowPathIcon className="w-4 h-4" />
+                Restart & Update
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-xs text-red-400">{error}</p>
+          )}
         </div>
       )}
     </div>

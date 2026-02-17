@@ -314,6 +314,22 @@ function runMigrations(sqlite: Database.Database): void {
     log.warn({ err }, 'Server networks migration check failed');
   }
 
+  // License security columns migration (offline grace persistence)
+  try {
+    const cols = sqlite.pragma('table_info(licenses)') as Array<{ name: string }>;
+    const colNames = cols.map(c => c.name);
+    if (!colNames.includes('last_online_validation')) {
+      sqlite.exec(`ALTER TABLE licenses ADD COLUMN last_online_validation INTEGER`);
+      log.info('Added last_online_validation column to licenses table');
+    }
+    if (!colNames.includes('consecutive_offline_starts')) {
+      sqlite.exec(`ALTER TABLE licenses ADD COLUMN consecutive_offline_starts INTEGER NOT NULL DEFAULT 0`);
+      log.info('Added consecutive_offline_starts column to licenses table');
+    }
+  } catch (err) {
+    log.warn({ err }, 'License security column migration failed');
+  }
+
   log.info('Migrations completed');
 }
 

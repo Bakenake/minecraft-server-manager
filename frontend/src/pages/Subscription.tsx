@@ -30,7 +30,6 @@ import {
   CheckCircleIcon,
   ExclamationCircleIcon,
   ClockIcon,
-  BeakerIcon,
 } from '@heroicons/react/24/outline';
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
@@ -84,12 +83,7 @@ export default function Subscription() {
     licenseKey?: string;
   } | null>(null);
 
-  // Trial key state
-  const [trialKey, setTrialKey] = useState<string | null>(null);
-  const [trialExpiry, setTrialExpiry] = useState<string | null>(null);
-  const [trialCountdown, setTrialCountdown] = useState<string>('');
-  const [generatingTrial, setGeneratingTrial] = useState(false);
-  const [trialMinutes, setTrialMinutes] = useState(15);
+
 
   useEffect(() => {
     fetchStatus();
@@ -117,9 +111,10 @@ export default function Subscription() {
     }
   }, [searchParams]);
 
-  // Countdown timer for trial keys and premium expiry
+  // Countdown timer for premium expiry
+  const [trialCountdown, setTrialCountdown] = useState<string>('');
   useEffect(() => {
-    const expirySource = trialExpiry || (status?.tier === 'premium' && status?.expiresAt ? status.expiresAt : null);
+    const expirySource = (status?.tier === 'premium' && status?.expiresAt ? status.expiresAt : null);
     if (!expirySource) {
       setTrialCountdown('');
       return;
@@ -128,8 +123,6 @@ export default function Subscription() {
       const diff = new Date(expirySource).getTime() - Date.now();
       if (diff <= 0) {
         setTrialCountdown('Expired');
-        setTrialKey(null);
-        setTrialExpiry(null);
         fetchStatus(); // Refresh to reflect expired state
         return;
       }
@@ -141,7 +134,7 @@ export default function Subscription() {
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [trialExpiry, status?.expiresAt, status?.tier]);
+  }, [status?.expiresAt, status?.tier]);
 
   const handleActivate = async () => {
     if (!licenseKey.trim()) return;
@@ -157,32 +150,6 @@ export default function Subscription() {
     if (result.success) {
       setLicenseKey('');
       setShowActivate(false);
-    }
-  };
-
-  const handleGenerateTrialKey = async () => {
-    setGeneratingTrial(true);
-    try {
-      const { data } = await api.post('/subscription/create-trial-key', {
-        durationMinutes: trialMinutes,
-      });
-      setTrialKey(data.licenseKey);
-      setTrialExpiry(data.expiresAt);
-      setRedemptionResult({
-        success: true,
-        message: `Trial key generated! Valid for ${data.durationMinutes} minutes. Copy and activate it below.`,
-        licenseKey: data.licenseKey,
-        expiresAt: data.expiresAt,
-      });
-      setShowRedemptionModal(true);
-    } catch (err: any) {
-      setRedemptionResult({
-        success: false,
-        message: err.response?.data?.error || 'Failed to generate trial key',
-      });
-      setShowRedemptionModal(true);
-    } finally {
-      setGeneratingTrial(false);
     }
   };
 
@@ -602,78 +569,6 @@ export default function Subscription() {
         </div>
       )}
 
-      {/* ─── Trial Key Generator (Dev/Testing) ───── */}
-      <div className="card border border-dashed border-accent-500/30">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-accent-500/10 rounded-lg flex items-center justify-center">
-            <BeakerIcon className="w-5 h-5 text-accent-400" />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-dark-100">Generate Trial Key</h3>
-            <p className="text-xs text-dark-500">Create a time-limited premium key for testing</p>
-          </div>
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4">
-          <div className="flex-1">
-            <label className="block text-sm text-dark-400 mb-1">Trial Duration</label>
-            <div className="flex gap-2">
-              {[5, 15, 30, 60].map((mins) => (
-                <button
-                  key={mins}
-                  onClick={() => setTrialMinutes(mins)}
-                  className={cn(
-                    'px-3 py-2 rounded-lg text-sm font-medium transition-all',
-                    trialMinutes === mins
-                      ? 'bg-accent-500 text-white'
-                      : 'bg-dark-700 text-dark-300 hover:bg-dark-600',
-                  )}
-                >
-                  {mins < 60 ? `${mins}m` : `${mins / 60}h`}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <button
-            onClick={handleGenerateTrialKey}
-            disabled={generatingTrial}
-            className="btn btn-primary flex items-center gap-2"
-          >
-            <BeakerIcon className="w-4 h-4" />
-            {generatingTrial ? 'Generating...' : 'Generate Trial Key'}
-          </button>
-        </div>
-
-        {/* Show generated trial key info */}
-        {trialKey && trialExpiry && (
-          <div className="mt-4 p-4 bg-dark-800 rounded-lg border border-accent-500/20">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-dark-500 uppercase tracking-wider">Generated Key</span>
-              {trialCountdown && (
-                <span className="text-xs font-mono text-warning-400 flex items-center gap-1">
-                  <ClockIcon className="w-3 h-3" />
-                  {trialCountdown}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <code className="text-accent-400 font-mono text-sm tracking-wider flex-1">{trialKey}</code>
-              <button
-                onClick={() => { navigator.clipboard.writeText(trialKey); toast.success('Key copied!'); }}
-                className="text-dark-400 hover:text-dark-200"
-                title="Copy key"
-              >
-                <ClipboardDocumentIcon className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-xs text-dark-500 mt-2">
-              Expires: {new Date(trialExpiry).toLocaleString()}
-            </p>
-          </div>
-        )}
-      </div>
-
       {/* ─── License Key Activation ───── */}
       {status?.tier !== 'premium' && (
         <div className="card">
@@ -702,7 +597,7 @@ export default function Subscription() {
                 onChange={(e) => setLicenseKey(e.target.value.toUpperCase())}
                 placeholder="CRAFT-XXXX-XXXX-XXXX-XXXX"
                 className="input flex-1 font-mono tracking-wider"
-                maxLength={24}
+                maxLength={29}
               />
               <div className="flex gap-2">
                 <button

@@ -329,19 +329,32 @@ async function openLicenseDetail(id) {
           ${data.activations.length === 0 ? '<p class="text-gray-500 text-xs">No activations</p>' : `
           <div class="space-y-2">
             ${data.activations.map(a => `
-              <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-800/50 text-xs">
-                <div>
-                  <span class="text-gray-300 font-medium">${a.hostname || 'Unknown'}</span>
-                  <span class="text-gray-500 ml-2">${a.platform || ''} · ${a.app_version || ''}</span>
-                  <span class="text-gray-600 ml-2">${a.ip_address || ''}</span>
+              <div class="px-3 py-2 rounded-lg bg-gray-800/50 text-xs space-y-1">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <span class="text-gray-300 font-medium">${a.hostname || 'Unknown'}</span>
+                    <span class="text-gray-500 ml-2">${a.platform || ''} · ${a.app_version || ''}</span>
+                    <span class="text-gray-600 ml-2">${a.ip_address || ''}</span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <span class="text-gray-500">${timeAgo(a.last_seen_at)}</span>
+                    ${a.is_active ? `<span class="badge bg-emerald-500/20 text-emerald-400">Active</span>` : `<span class="badge bg-gray-500/20 text-gray-400">Inactive</span>`}
+                    ${a.is_active ? `<button onclick="deactivateActivation('${a.id}')" class="text-red-400 hover:text-red-300" title="Force deactivate">
+                      <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>` : ''}
+                  </div>
                 </div>
-                <div class="flex items-center gap-3">
-                  <span class="text-gray-500">${timeAgo(a.last_seen_at)}</span>
-                  ${a.is_active ? `<span class="badge bg-emerald-500/20 text-emerald-400">Active</span>` : `<span class="badge bg-gray-500/20 text-gray-400">Inactive</span>`}
-                  ${a.is_active ? `<button onclick="deactivateActivation('${a.id}')" class="text-red-400 hover:text-red-300" title="Force deactivate">
-                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                  </button>` : ''}
-                </div>
+                ${(a.username || a.os_version || a.cpu_model || a.mac_addresses) ? `
+                <div class="grid grid-cols-2 gap-x-4 gap-y-0.5 text-gray-500 border-t border-gray-700/50 pt-1 mt-1">
+                  ${a.username ? `<div><span class="text-gray-600">User:</span> ${a.username}</div>` : ''}
+                  ${a.os_version ? `<div><span class="text-gray-600">OS:</span> ${a.os_version}</div>` : ''}
+                  ${a.os_release ? `<div><span class="text-gray-600">Release:</span> ${a.os_release}</div>` : ''}
+                  ${a.arch ? `<div><span class="text-gray-600">Arch:</span> ${a.arch}</div>` : ''}
+                  ${a.cpu_model ? `<div><span class="text-gray-600">CPU:</span> ${a.cpu_model}</div>` : ''}
+                  ${a.cpu_cores ? `<div><span class="text-gray-600">Cores:</span> ${a.cpu_cores}</div>` : ''}
+                  ${a.total_memory_gb ? `<div><span class="text-gray-600">RAM:</span> ${a.total_memory_gb} GB</div>` : ''}
+                  ${a.mac_addresses ? `<div class="col-span-2"><span class="text-gray-600">MAC:</span> <span class="font-mono">${a.mac_addresses}</span></div>` : ''}
+                </div>` : ''}
               </div>
             `).join('')}
           </div>`}
@@ -490,7 +503,7 @@ function renderActivationsTable(activations) {
   const tbody = document.getElementById('activations-table');
 
   if (activations.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" class="px-4 py-8 text-center text-gray-500">No activations found</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="11" class="px-4 py-8 text-center text-gray-500">No activations found</td></tr>`;
     return;
   }
 
@@ -499,9 +512,11 @@ function renderActivationsTable(activations) {
       <td class="px-4 py-3"><span class="font-mono text-xs text-brand-400">${a.license_key}</span></td>
       <td class="px-4 py-3"><span class="text-xs text-gray-400">${a.email || '-'}</span></td>
       <td class="px-4 py-3"><span class="text-xs text-gray-300">${a.hostname || '-'}</span></td>
+      <td class="px-4 py-3"><span class="text-xs text-gray-500">${a.username || '-'}</span></td>
       <td class="px-4 py-3"><span class="text-xs text-gray-500">${a.platform || '-'}</span></td>
       <td class="px-4 py-3"><span class="text-xs text-gray-500">${a.app_version || '-'}</span></td>
       <td class="px-4 py-3"><span class="text-xs text-gray-500 font-mono">${a.ip_address || '-'}</span></td>
+      <td class="px-4 py-3"><span class="text-xs text-gray-500 font-mono" title="${a.hardware_id || ''}">${(a.hardware_id || '-').substring(0, 12)}...</span></td>
       <td class="px-4 py-3"><span class="text-xs text-gray-500">${timeAgo(a.last_seen_at)}</span></td>
       <td class="px-4 py-3">${a.is_active ? '<span class="badge bg-emerald-500/20 text-emerald-400">Active</span>' : '<span class="badge bg-gray-500/20 text-gray-400">Inactive</span>'}</td>
       <td class="px-4 py-3">

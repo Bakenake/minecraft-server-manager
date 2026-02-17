@@ -53,6 +53,14 @@ function runMigrations(db: Database.Database): void {
       activated_at TEXT NOT NULL DEFAULT (datetime('now')),
       last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
       deactivated_at TEXT,
+      os_version TEXT,
+      os_release TEXT,
+      arch TEXT,
+      total_memory_gb REAL,
+      cpu_model TEXT,
+      cpu_cores INTEGER,
+      mac_addresses TEXT,
+      username TEXT,
       UNIQUE(license_id, hardware_id)
     );
 
@@ -81,6 +89,28 @@ function runMigrations(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_validation_log_key ON validation_log(license_key);
     CREATE INDEX IF NOT EXISTS idx_validation_log_time ON validation_log(validated_at);
   `);
+
+  // ─── Migrations for existing databases ──────────────────
+  const activationCols = db.prepare("PRAGMA table_info(activations)").all() as any[];
+  const colNames = activationCols.map((c: any) => c.name);
+
+  const newCols: [string, string][] = [
+    ['os_version', 'TEXT'],
+    ['os_release', 'TEXT'],
+    ['arch', 'TEXT'],
+    ['total_memory_gb', 'REAL'],
+    ['cpu_model', 'TEXT'],
+    ['cpu_cores', 'INTEGER'],
+    ['mac_addresses', 'TEXT'],
+    ['username', 'TEXT'],
+  ];
+
+  for (const [col, type] of newCols) {
+    if (!colNames.includes(col)) {
+      db.exec(`ALTER TABLE activations ADD COLUMN ${col} ${type}`);
+      console.log(`[db] Added column activations.${col}`);
+    }
+  }
 
   console.log('[db] Database initialized');
 }
