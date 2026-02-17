@@ -57,6 +57,7 @@ const navItems: Array<{
   { to: '/network', icon: SignalIcon, label: 'Networks', premiumFeature: 'networkProxy' },
   { to: '/audit', icon: ClipboardDocumentListIcon, label: 'Audit Log' },
   { to: '/settings', icon: Cog6ToothIcon, label: 'Settings' },
+  // Subscription nav item — label/icon are overridden dynamically for premium users
   { to: '/subscription', icon: SparklesIcon, label: 'Subscription' },
 ];
 
@@ -129,7 +130,9 @@ export default function Sidebar({ isOpen, onToggle }: SidebarProps) {
                 title={label}
               >
                 <Icon className="w-5 h-5 flex-shrink-0" />
-                <span className={cn('flex-1', !isOpen && 'lg:hidden')}>{label}</span>
+                <span className={cn('flex-1', !isOpen && 'lg:hidden')}>
+                  {to === '/subscription' && isPremium() ? 'License' : label}
+                </span>
                 {showProBadge && (
                   <span className={cn(
                     'text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-accent-500/20 text-accent-400',

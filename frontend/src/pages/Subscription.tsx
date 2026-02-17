@@ -199,9 +199,13 @@ export default function Subscription() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-dark-100">Subscription</h1>
+          <h1 className="text-2xl font-bold text-dark-100">
+            {status?.tier === 'premium' ? 'Premium License' : 'Subscription'}
+          </h1>
           <p className="text-dark-400 mt-1">
-            Manage your CraftOS license and unlock premium features
+            {status?.tier === 'premium'
+              ? 'Your premium license is active — all features are unlocked'
+              : 'Manage your CraftOS license and unlock premium features'}
           </p>
         </div>
         <button
@@ -619,8 +623,8 @@ export default function Subscription() {
         </div>
       )}
 
-      {/* ─── Feature Comparison ───── */}
-      {categories.length > 0 && (
+      {/* ─── Feature Comparison (only show for free users) ───── */}
+      {status?.tier !== 'premium' && categories.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-dark-100">Feature Comparison</h2>

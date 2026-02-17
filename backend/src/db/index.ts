@@ -38,6 +38,19 @@ export function initDatabase(): BetterSQLite3Database<typeof schema> {
   // Run migrations
   runMigrations(sqlite);
 
+  // Restrict DB file permissions (owner-only on Unix, best effort on Windows)
+  try {
+    fs.chmodSync(config.db.path, 0o600);
+    // Also protect the WAL and SHM files if they exist
+    const walPath = config.db.path + '-wal';
+    const shmPath = config.db.path + '-shm';
+    if (fs.existsSync(walPath)) fs.chmodSync(walPath, 0o600);
+    if (fs.existsSync(shmPath)) fs.chmodSync(shmPath, 0o600);
+  } catch {
+    // On Windows chmod may not fully apply — that's acceptable since
+    // the data dir is already inside %APPDATA% which is user-scoped
+  }
+
   log.info('Database initialized successfully');
   return db;
 }
@@ -325,6 +338,10 @@ function runMigrations(sqlite: Database.Database): void {
     if (!colNames.includes('consecutive_offline_starts')) {
       sqlite.exec(`ALTER TABLE licenses ADD COLUMN consecutive_offline_starts INTEGER NOT NULL DEFAULT 0`);
       log.info('Added consecutive_offline_starts column to licenses table');
+    }
+    if (!colNames.includes('integrity_signature')) {
+      sqlite.exec(`ALTER TABLE licenses ADD COLUMN integrity_signature TEXT`);
+      log.info('Added integrity_signature column to licenses table');
     }
   } catch (err) {
     log.warn({ err }, 'License security column migration failed');

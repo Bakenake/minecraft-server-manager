@@ -199,6 +199,7 @@ export const licenses = sqliteTable('licenses', {
   lastOnlineValidation: integer('last_online_validation', { mode: 'timestamp' }),
   consecutiveOfflineStarts: integer('consecutive_offline_starts').notNull().default(0),
   validationFailures: integer('validation_failures').notNull().default(0),
+  integritySignature: text('integrity_signature'), // HMAC tamper-detection signature
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });

@@ -506,6 +506,38 @@ export class LicenseService {
     // Prefer premium license over free when multiple exist
     const license = activeLicenses.find(l => l.tier === 'premium') || activeLicenses[0];
 
+    // Verify integrity signature (tamper detection)
+    if (license.integritySignature && license.tier === 'premium') {
+      try {
+        const sigData = {
+          licenseKey: license.licenseKey,
+          tier: license.tier,
+          hardwareId: license.hardwareId || '',
+          expiresAt: license.expiresAt ? new Date(license.expiresAt).getTime() : null,
+        };
+        const valid = verifyLicenseSignature(sigData, license.integritySignature);
+        if (!valid) {
+          log.warn({ licenseKey: license.licenseKey }, 'License integrity check failed — possible tampering');
+          await db
+            .update(licenses)
+            .set({ status: 'suspended', updatedAt: new Date() })
+            .where(eq(licenses.id, license.id));
+
+          this.cachedLicense = {
+            tier: 'free',
+            limits: FREE_TIER,
+            licenseKey: license.licenseKey,
+            expiresAt: license.expiresAt,
+            lastValidated: new Date(),
+            stripeCustomerId: license.stripeCustomerId,
+          };
+          return { ...this.cachedLicense, status: 'suspended' };
+        }
+      } catch {
+        log.warn({ licenseKey: license.licenseKey }, 'Integrity signature verification error');
+      }
+    }
+
     // Check expiration
     if (license.expiresAt && new Date(license.expiresAt) < new Date()) {
       await db
@@ -679,6 +711,13 @@ export class LicenseService {
         .where(eq(licenses.licenseKey, licenseKey))
         .limit(1);
 
+      const signature = signLicenseData({
+        licenseKey,
+        tier,
+        hardwareId,
+        expiresAt: expiresAt ? expiresAt.getTime() : null,
+      });
+
       if (existingLocal.length > 0) {
         // Update existing local record
         await db
@@ -693,6 +732,7 @@ export class LicenseService {
             lastOnlineValidation: now,
             consecutiveOfflineStarts: 0,
             validationFailures: 0,
+            integritySignature: signature,
             updatedAt: now,
           })
           .where(eq(licenses.id, existingLocal[0].id));
@@ -711,6 +751,7 @@ export class LicenseService {
           lastOnlineValidation: now,
           consecutiveOfflineStarts: 0,
           validationFailures: 0,
+          integritySignature: signature,
           updatedAt: now,
           createdAt: now,
         });
@@ -944,14 +985,37 @@ export class LicenseService {
       }
     }
 
-    // Integrity check: verify license data hasn't been tampered with in the DB
-    const dbData = {
-      licenseKey: license.licenseKey,
-      tier: license.tier,
-      maxServers: license.maxServers,
-      maxRamMb: license.maxRamMb,
-      maxPlayers: license.maxPlayers,
-    };
+    // Integrity check: verify HMAC signature hasn't been tampered with
+    if (license.integritySignature && license.tier === 'premium') {
+      try {
+        const sigData = {
+          licenseKey: license.licenseKey,
+          tier: license.tier,
+          hardwareId: license.hardwareId || '',
+          expiresAt: license.expiresAt ? new Date(license.expiresAt).getTime() : null,
+        };
+        const valid = verifyLicenseSignature(sigData, license.integritySignature);
+        if (!valid) {
+          log.warn({ licenseKey: license.licenseKey }, 'Integrity signature mismatch — DB tampered');
+          await db
+            .update(licenses)
+            .set({ status: 'suspended', updatedAt: new Date() })
+            .where(eq(licenses.id, license.id));
+
+          this.cachedLicense = {
+            tier: 'free',
+            limits: FREE_TIER,
+            licenseKey: license.licenseKey,
+            expiresAt: license.expiresAt,
+            lastValidated: new Date(),
+            stripeCustomerId: license.stripeCustomerId,
+          };
+          return false;
+        }
+      } catch {
+        log.warn({ licenseKey: license.licenseKey }, 'Integrity signature verification error during validation');
+      }
+    }
 
     // Verify tier-limit consistency (someone manually editing the DB)
     if (license.tier === 'free') {
@@ -1026,6 +1090,13 @@ export class LicenseService {
     const licenseKey = generateLicenseKey();
     const now = new Date();
 
+    const signature = signLicenseData({
+      licenseKey,
+      tier: 'free',
+      hardwareId,
+      expiresAt: null,
+    });
+
     await db.insert(licenses).values({
       id: crypto.randomUUID(),
       licenseKey,
@@ -1041,6 +1112,7 @@ export class LicenseService {
       features: JSON.stringify(FREE_TIER.features),
       lastValidatedAt: now,
       validationFailures: 0,
+      integritySignature: signature,
       createdAt: now,
       updatedAt: now,
     });

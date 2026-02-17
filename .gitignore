@@ -59,6 +59,12 @@ release/
 *.deb
 *.rpm
 
+# License server (deployed separately, not in main repo)
+license-server/
+
+# Duplicate/backup folders
+Server manager/
+
 # Temp
 tmp/
 temp/
