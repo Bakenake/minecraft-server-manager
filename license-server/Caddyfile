@@ -1,0 +1,3 @@
+api.craftos.app {
+    reverse_proxy localhost:3100
+}

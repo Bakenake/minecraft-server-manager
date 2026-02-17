@@ -35,6 +35,7 @@ import path from 'path';
 import { getDb, closeDb } from './db';
 import licenseRoutes from './routes/license';
 import adminRoutes from './routes/admin';
+import { adminUpdatesRouter, publicUpdatesRouter } from './routes/updates';
 import { ensureAdminUser } from './seed';
 
 const app = express();
@@ -46,6 +47,7 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com"],
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:"],
@@ -69,7 +71,7 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '100mb' }));
 
 // ─── Rate Limiting ──────────────────────────────────────────
 
@@ -97,11 +99,18 @@ app.use('/v1/license', validateLimiter, licenseRoutes);
 // Admin key management API
 app.use('/admin', adminLimiter, adminRoutes);
 
+// Admin update file management (upload/list/delete)
+app.use('/admin/updates', adminLimiter, adminUpdatesRouter);
+
+// Public update file downloads (no auth — used by desktop app auto-updater)
+app.use('/updates', publicUpdatesRouter);
+
 // Admin Dashboard (static files)
 const publicDir = path.join(__dirname, '..', 'public');
 app.use('/dashboard', express.static(publicDir));
 app.get('/dashboard', (_req, res) => {
-  res.sendFile(path.join(publicDir, 'index.html'));
+  // Redirect to trailing slash so relative script/CSS paths resolve correctly
+  res.redirect(301, '/dashboard/');
 });
 
 // Health check
